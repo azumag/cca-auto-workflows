@@ -1,0 +1,54 @@
+name: Auto Issue Resolver
+
+on:
+  schedule:
+    # 全ての時間帯で1時間ごとに実行
+    - cron: '0 * * * *'
+  workflow_dispatch: # 手動実行も可能
+
+jobs:
+  process-issue:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Find and process highest priority issue
+        uses: actions/github-script@v7
+        with:
+          # Personal Access Tokenを使用（設定されていない場合はGITHUB_TOKENを使用）
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            // 全てのオープンissueを取得
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            
+            if (issues.data.length > 0) {
+              // ランダムに一つ選択
+              const randomIndex = Math.floor(Math.random() * issues.data.length);
+              const selectedIssue = issues.data[randomIndex];
+              
+              // @claudeメンションコメントを投稿
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: selectedIssue.number,
+                body: [
+                  `@claude このIssue #${selectedIssue.number} を解決してください。`,
+                  'もし、すでに解決済みの場合は、resolved とラベルをつけ、issueをクローズしてください。',
+                  '以下の内容に基づいて実装し、実装が完了した場合は pr とラベルをつけてください',
+                  '',
+                  `**タイトル**: ${selectedIssue.title}`,
+                  '',
+                  '**説明**:',
+                  selectedIssue.body || '説明なし'
+                ].join('\n')
+              });
+              
+              console.log(`Randomly selected issue #${selectedIssue.number} for processing`);
+              console.log('Claude Code Action will be triggered by the mention');
+            } else {
+              console.log('No open issues found');
+            }
