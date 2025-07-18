@@ -1,6 +1,5 @@
 ---
 title: "Claude Code Actions で完全自動開発ワークフローを構築する"
-emoji: "🤖"
 type: "tech"
 topics: ["github-actions", "claude", "ai", "automation", "devops"]
 published: false
