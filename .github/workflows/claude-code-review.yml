@@ -1,0 +1,119 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [labeled]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
+
+jobs:
+  claude-review:
+    # Optional: Filter by PR author
+    if: |
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'ci-passed' &&
+      !contains(github.event.pull_request.labels.*.name, 'review-fixed')
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
+          # model: "claude-opus-4-20250514"
+          
+          # Direct prompt for automated review (no @claude mention needed)
+          direct_prompt: |
+            Please review this pull request and provide comprehensive feedback.
+
+            Case of development system, Focus on :
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Performance considerations
+            - Security implications
+            - Test coverage
+            - Documentation updates if needed
+            - YAGNI（You Aren't Gonna Need It）：今必要じゃない機能は作らない
+            - DRY（Don't Repeat Yourself）：同じコードを繰り返さない
+            - KISS（Keep It Simple Stupid）：シンプルに保つ
+            - t-wada TDD: テスト駆動開発
+
+            In case of article, focus on:
+            - Clarity and readability of the content
+            - Technical accuracy and depth of analysis
+            - Relevance to the target audience
+            - Structure and flow of the article
+            - Use of appropriate examples and illustrations
+            - Grammar and spelling
+            - Adherence to the publication's style guide
+            - Ensure the article is engaging and informative
+            - Provide actionable suggestions for improvement
+            - Ensure the article is well-structured and flows logically
+
+            Provide constructive feedback with specific suggestions for improvement.
+            Use inline comments to highlight specific areas of concern.
+          # allowed_tools: "mcp__github__create_pending_pull_request_review,mcp__github__add_pull_request_review_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__get_pull_request_diff"
+          allowed_tools: "Agent,Bash,Edit,MultiEdit,WebFetch,WebSearch,Write"
+
+          # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
+          # use_sticky_comment: true
+          
+          # Optional: Customize review based on file types
+          # direct_prompt: |
+          #   Review this PR focusing on:
+          #   - For TypeScript files: Type safety and proper interface usage
+          #   - For API endpoints: Security, input validation, and error handling
+          #   - For React components: Performance, accessibility, and best practices
+          #   - For tests: Coverage, edge cases, and test quality
+          
+          # Optional: Different prompts for different authors
+          # direct_prompt: |
+          #   ${{ github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' && 
+          #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
+          #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
+          
+          # Optional: Add specific tools for running tests or linting
+          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
+          
+          # Optional: Skip review for certain conditions
+          # if: |
+          #   !contains(github.event.pull_request.title, '[skip-review]') &&
+          #   !contains(github.event.pull_request.title, '[WIP]')
+      - name: Add reviewed Label
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          script: |
+            // pull_requestイベントから直接PR番号を取得
+            const prNumber = context.payload.pull_request.number;
+            console.log(`Adding reviewed label to PR #${prNumber}`);
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: ['reviewed']
+            });
+            
+            console.log(`Added reviewed label to PR #${prNumber}`);
