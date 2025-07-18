@@ -25,31 +25,70 @@ This repository implements an automated development workflow that processes issu
 
 ```mermaid
 graph TD
-    A[Open Issue] --> B{Has @claude?}
-    B -->|No| C[Auto Issue Resolver<br/>Hourly Cron]
-    B -->|Yes| D[Claude Code Workflow]
-    C --> E[Add 'processing' label<br/>to random issue]
-    E --> F[Issue Processor Workflow]
-    D --> G[Claude processes request]
-    F --> H[Claude solves issue]
-    G --> I{Implementation complete?}
-    H --> I
-    I -->|Yes| J[Add 'pr-ready' label]
-    I -->|No| K[Continue processing]
-    J --> L[Issue Processor creates PR]
-    L --> M[Add 'pr-created' label]
-    M --> N[CI Workflow runs]
-    N --> O{CI Success?}
-    O -->|Yes| P[Add 'ci-passed' label]
-    O -->|No| Q[Add 'ci-failure' label]
-    P --> R[Claude Code Review]
-    R --> S[Add 'reviewed' label]
-    S --> T[Claude Review Fix]
-    T --> U{Review fixed?}
-    U -->|Yes| V[Add 'review-fixed' label]
-    U -->|No| W[Continue fixing]
-    V --> X[Auto-approve & merge PR]
-    X --> Y[Close issue as resolved]
+    subgraph DAILY ["Daily Issue Creator"]
+        A["**Issue 自動作成**<br>リファクタ・機能提案・ドキュメント作成など"]
+    end
+    
+    subgraph RESOLVER ["Auto Issue Resolver"]
+        B["毎時ランダムIssue選択"]
+        C["processing ラベル追加"]
+    end
+    
+    subgraph PROCESSOR ["Issue Processor"]
+        D["Claude Code Actions 実行/ issue 内容を実装"]
+        E["ラベル削除"]
+        H["PR 自動作成"]
+    end
+    
+    subgraph CI ["CI/CD Pipeline"]
+        J["テスト実行"]
+    end
+    
+    subgraph HANDLER ["CI Result Handler"]
+        M{"CI結果判定"}
+        N["ci-passed"]
+        O["ci-failure"]
+    end
+    
+    subgraph REVIEW ["Code Review"]
+        P["Claude Code Review"]
+    end
+    
+    subgraph FIX ["Review Fix"]
+        R["Claude Review Fix"]
+        S["修正実行"]
+    end
+    
+    subgraph MERGE ["Auto Merge Process"]
+        U["自動マージ実行"]
+        V["Issue Close"]
+    end
+    
+    subgraph CIFIX ["CI Fix"]
+        W["Claude CI Fix"]
+        X["修正実行"]
+    end
+    
+    A --> B
+    B --> C
+    C -->|ラベル追加で起動:PAT| D
+    D -->|失敗| E
+    D -->|成功| H
+    H -->|失敗| E
+    H --> J
+    J --> M
+    M -->|成功| N
+    M -->|失敗| O
+    N --> P
+    P --> R
+    R -->|修正必要| S
+    R -->|修正不要| U
+    S --> J
+    U --> V
+    O --> W
+    W --> X
+    X --> J
+    
 ```
 
 ## Detailed Workflow Processes
