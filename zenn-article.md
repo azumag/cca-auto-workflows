@@ -19,22 +19,56 @@ published: false
 
 ```mermaid
 graph TD
-    A[Daily Issue Creator<br/>毎日6時にIssue作成] --> B[Auto Issue Resolver<br/>毎時間ランダムIssue選択]
-    B --> C[processing ラベル追加]
-    C --> D[Issue Processor<br/>Claude Code Actions 実行]
-    D --> E[Claude による実装]
-    E --> F[pr-ready ラベル追加]
-    F --> G[GitHub App Token 生成]
-    G --> H[PR 自動作成]
-    H --> I[pr-created ラベル追加]
-    I --> J[CI/CD パイプライン実行]
-    J --> K[Auto Merge<br/>（将来実装予定）]
+    A["Daily Issue Creator<br/>毎日6時にIssue自動作成"] --> B["Auto Issue Resolver<br/>毎時間ランダムIssue選択"]
+    B --> C["processing ラベル追加"]
+    C --> D["Issue Processor<br/>Claude Code Actions 実行"]
+    D --> E["Claude による実装"]
+    E --> F{"実装完了?"}
+    F -->|成功| G["pr-ready ラベル追加"]
+    F -->|失敗| H["error ラベル追加"]
+    H --> I["手動レビュー待ち"]
+    I -.->|修正後| C
     
-    style A fill:#e1f5fe
-    style D fill:#f3e5f5
-    style E fill:#f3e5f5
-    style G fill:#fff3e0
-    style H fill:#fff3e0
+    G --> J["GitHub App Token 生成"]
+    J --> K["PR 自動作成"]
+    K --> L["pr-created ラベル追加"]
+    L --> M["CI/CD パイプライン実行"]
+    
+    M --> N{"CI結果"}
+    N -->|成功| O["ci-passed ラベル追加"]
+    N -->|失敗| P["ci-failure ラベル追加"]
+    
+    P --> Q["AI Code Review"]
+    Q --> R{"レビュー結果"}
+    R -->|修正可能| S["自動修正実行"]
+    R -->|要人的確認| T["人的レビュー要求"]
+    
+    S --> M
+    T -.->|修正後| M
+    
+    O --> U["Auto Merge"]
+    U --> V["Issue Close"]
+    V --> W["次のIssue処理へ"]
+    W -.-> B
+    
+    style A fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
+    style B fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style D fill:#fff8e1,stroke:#f57c00,stroke-width:3px
+    style E fill:#fff8e1,stroke:#f57c00,stroke-width:2px
+    style J fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style K fill:#e8f5e8,stroke:#388e3c,stroke-width:3px
+    style M fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style Q fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style U fill:#e0f2f1,stroke:#00695c,stroke-width:3px
+    
+    classDef errorNode fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    class H,I,P,T errorNode
+    
+    classDef successNode fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    class G,O,V successNode
+    
+    classDef reviewNode fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    class Q,R,S reviewNode
 ```
 
 ### システムの特徴
@@ -388,3 +422,216 @@ Claude Code Actions を活用することで、完全自動開発ワークフロ
 このシステムにより、継続的な改善サイクルが人間の介入なしに回り続け、開発効率の大幅な向上が期待できます。
 
 現在もこのワークフローは稼働中で、日々新しい機能や改善が自動的に実装されています。AI を活用した開発の新しい可能性を示す事例として、参考にしていただければ幸いです。
+
+## CI結果の自動ハンドリング
+
+`workflow_run`イベントを使用してCI結果を監視し、自動でラベルを更新：
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+# CI結果に基づくラベル管理
+if (conclusion === 'success') {
+  // ci-passedラベル追加、ci-failureラベル削除
+} else if (conclusion === 'failure') {
+  // ci-failureラベル追加、ci-passedラベル削除
+}
+```
+
+### CI Result Handler の実装
+
+CI完了後、自動的に結果をIssueに反映：
+
+```yaml
+name: CI Result Handler
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  handle-ci-result:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    
+    steps:
+      - name: Get PR Number
+        id: get-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = github.event.workflow_run.pull_requests[0]?.number;
+            return prNumber;
+
+      - name: Update Labels Based on CI Result
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          script: |
+            const conclusion = '${{ github.event.workflow_run.conclusion }}';
+            const prNumber = ${{ steps.get-pr.outputs.result }};
+            
+            if (conclusion === 'success') {
+              // 成功時のラベル管理
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                labels: ['ci-passed']
+              });
+              
+              // 失敗ラベルがあれば削除
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  name: 'ci-failure'
+                });
+              } catch (error) {
+                console.log('ci-failure label not found');
+              }
+            } else if (conclusion === 'failure') {
+              // 失敗時のラベル管理
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                labels: ['ci-failure']
+              });
+            }
+```
+
+## PRの自己マージ制限とその回避
+
+### GitHub Actionsの制限
+
+通常のGitHub Tokenを使用したPRは、同じワークフロー内でマージできません。これは以下の理由によるものです：
+
+1. セキュリティ上の制限
+2. 無限ループ防止
+3. 人間による承認プロセスの強制
+
+### GitHub Appによる解決
+
+GitHub Appを使用することで、この制限を回避できます：
+
+```yaml
+# GitHub App Tokenを使用してPR作成
+- name: Create Pull Request
+  uses: actions/github-script@v7
+  with:
+    github-token: ${{ steps.app-token.outputs.token }}  # GitHub App Token
+```
+
+これにより、以下が可能になります：
+- PRの自動作成
+- 必要に応じた自動マージ（追加実装可能）
+- コードレビュープロセスの自動化
+
+### 自動マージの実装例
+
+```yaml
+- name: Auto Merge if CI Passed
+  if: contains(github.event.pull_request.labels.*.name, 'ci-passed')
+  uses: actions/github-script@v7
+  with:
+    github-token: ${{ steps.app-token.outputs.token }}
+    script: |
+      await github.rest.pulls.merge({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        pull_number: context.payload.pull_request.number,
+        merge_method: 'squash'
+      });
+```
+
+## 実際の導入効果
+
+### 開発速度の向上
+- 手動での課題発見・実装時間の削減
+- 24時間体制での継続的改善
+- 平均的な開発サイクル時間の短縮
+
+### 品質の維持
+- 一貫したコーディング規約の適用
+- 自動テストによる品質保証
+- Claude Code による高品質な実装
+
+### 開発者の負荷軽減
+- 繰り返し作業の自動化
+- より創造的な作業への集中可能
+- メンテナンス作業の完全自動化
+
+## システムの信頼性と監視
+
+### ラベルベースの状態管理
+
+各Issueの状態を明確に管理：
+
+- `auto-generated`: 自動生成されたIssue
+- `processing`: 処理中
+- `pr-ready`: PR作成準備完了
+- `pr-created`: PR作成済み
+- `ci-passed`: CI成功
+- `ci-failure`: CI失敗
+
+### 監視とアラート
+
+```yaml
+- name: Monitor System Health
+  if: failure()
+  uses: actions/github-script@v7
+  with:
+    script: |
+      await github.rest.issues.create({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        title: '自動化システム エラー',
+        body: `ワークフローでエラーが発生しました。\n\n詳細: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+        labels: ['system-error', 'high-priority']
+      });
+```
+
+## アーキテクチャの拡張性
+
+### 将来の拡張可能性
+
+1. **より高度なタスク生成**: AIによる課題分析と優先度付け
+2. **動的テスト生成**: 実装内容に応じたテストケース自動生成
+3. **レビュープロセス自動化**: AI によるコードレビューと自動承認
+4. **デプロイメント自動化**: 本番環境への自動デプロイ
+
+### マルチリポジトリ対応
+
+```yaml
+strategy:
+  matrix:
+    repo: ['repo1', 'repo2', 'repo3']
+```
+
+### 条件分岐による処理の最適化
+
+```yaml
+- name: Determine Task Complexity
+  id: complexity
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const title = context.payload.issue.title;
+      const body = context.payload.issue.body;
+      
+      // AIを使って複雑度を判定
+      const complexity = analyzeComplexity(title, body);
+      return complexity;
+
+- name: Use Complex Processing
+  if: steps.complexity.outputs.result == 'high'
+  uses: anthropics/claude-code-action@beta
+  with:
+    allowed_tools: "Agent,Bash,Edit,MultiEdit,WebFetch,WebSearch,Write,Read"
+```
