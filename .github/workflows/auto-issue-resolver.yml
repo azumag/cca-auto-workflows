@@ -69,6 +69,7 @@ jobs:
               console.log('Claude Code Action will be triggered by the mention');
             }
       - name: Generate GitHub App Token
+        if: steps.process_issues.outputs.issue_number != ''
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
