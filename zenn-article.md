@@ -23,14 +23,9 @@ graph TD
     B --> C["processing ラベル追加"]
     C --> D["Issue Processor<br/>Claude Code Actions 実行"]
     D --> E["Claude による実装"]
-    E --> F{"実装完了?"}
-    F -->|成功| G["pr-ready ラベル追加"]
-    F -->|失敗| H["error ラベル追加"]
-    H --> I["手動レビュー待ち"]
-    I -.->|修正後| C
+    E --> G["pr-ready ラベル追加"]
     
-    G --> J["GitHub App Token 生成"]
-    J --> K["PR 自動作成"]
+    G --> K["PR 自動作成"]
     K --> L["pr-created ラベル追加"]
     L --> M["CI/CD パイプライン実行"]
     
@@ -38,18 +33,20 @@ graph TD
     N -->|成功| O["ci-passed ラベル追加"]
     N -->|失敗| P["ci-failure ラベル追加"]
     
-    P --> Q["AI Code Review"]
-    Q --> R{"レビュー結果"}
-    R -->|修正可能| S["自動修正実行"]
-    R -->|要人的確認| T["人的レビュー要求"]
+    O --> Q["Claude Code Review"]
+    Q --> R["reviewed ラベル追加"] 
+    R --> S["Claude Review Fix"]
+    S --> T{"修正内容"}
+    T -->|修正完了| U["review-fixed ラベル追加"]
+    T -->|追加修正必要| S
+    U --> V["Auto Merge"]
     
-    S --> M
-    T -.->|修正後| M
+    P --> W["Claude CI Fix"]
+    W --> M
     
-    O --> U["Auto Merge"]
-    U --> V["Issue Close"]
-    V --> W["次のIssue処理へ"]
-    W -.-> B
+    V --> X["Issue Close"]
+    X --> Y["次のIssue処理へ"]
+    Y -.-> B
     
     style A fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
     style B fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
@@ -62,13 +59,13 @@ graph TD
     style U fill:#e0f2f1,stroke:#00695c,stroke-width:3px
     
     classDef errorNode fill:#ffebee,stroke:#d32f2f,stroke-width:2px
-    class H,I,P,T errorNode
+    class P,W errorNode
     
     classDef successNode fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
-    class G,O,V successNode
+    class G,O,U,V,X successNode
     
     classDef reviewNode fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
-    class Q,R,S reviewNode
+    class Q,R,S,T reviewNode
 ```
 
 ### システムの特徴
@@ -77,6 +74,8 @@ graph TD
 2. **無限ループ回避**: PAT と GitHub App の使い分けで Actions の制限を回避
 3. **ラベルベース状態管理**: 各段階を明確にラベルで管理
 4. **スケーラブル**: 複数の Issue を並行処理可能
+5. **自動品質管理**: CI失敗時の自動修正とコードレビュー
+6. **段階的マージ**: レビュー完了後の自動承認・マージ
 
 ## 技術的実装
 
@@ -423,22 +422,75 @@ Claude Code Actions を活用することで、完全自動開発ワークフロ
 
 現在もこのワークフローは稼働中で、日々新しい機能や改善が自動的に実装されています。AI を活用した開発の新しい可能性を示す事例として、参考にしていただければ幸いです。
 
-## CI結果の自動ハンドリング
+## CI結果の自動ハンドリングとレビューシステム
 
-`workflow_run`イベントを使用してCI結果を監視し、自動でラベルを更新：
+### CI失敗時の自動修正フロー
+
+CI失敗時には以下の自動化されたフローが実行されます：
+
+1. **CI失敗検出**: `ci-failure`ラベルが自動追加
+2. **Claude CI Fix**: CI失敗を自動修正
+3. **Auto Review**: 修正後のコードを自動レビュー
+4. **Review Fix**: レビュー結果に基づく追加修正
+5. **Auto Merge**: すべて完了後の自動マージ
+
+### Claude Code Review ワークフロー
 
 ```yaml
-on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+name: Claude Code Review
 
-# CI結果に基づくラベル管理
-if (conclusion === 'success') {
-  // ci-passedラベル追加、ci-failureラベル削除
-} else if (conclusion === 'failure') {
-  // ci-failureラベル追加、ci-passedラベル削除
-}
+on:
+  pull_request:
+    types: [synchronize, labeled]
+
+jobs:
+  auto-review:
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'ci-passed') &&
+      !contains(github.event.pull_request.labels.*.name, 'reviewed')
+      
+    steps:
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@beta
+        with:
+          direct_prompt: |
+            Please review this pull request focusing on:
+            - Code quality and best practices
+            - YAGNI, DRY, KISS principles
+            - Security implications
+            - Test coverage
+```
+
+### Claude Review Fix ワークフロー
+
+レビュー完了後、自動で修正を実行：
+
+```yaml
+name: Claude Review Fix
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  claude-Review-fix:
+    if: github.event.label.name == 'reviewed'
+    
+    steps:
+      - name: Run Claude Code for Review Fix
+        uses: anthropics/claude-code-action@beta
+        with:
+          direct_prompt: |
+            PRのレビューが完了しています。以下を実行してください：
+            - レビュー結果を確認し、必要な修正を実行
+            - 修正完了時は review-fixed ラベルを追加
+            
+      - name: Check and Auto-merge if review-fixed
+        run: |
+          if gh pr view $PR_NUMBER --json labels | grep -q "review-fixed"; then
+            gh pr review $PR_NUMBER --approve
+            gh pr merge $PR_NUMBER --merge --auto
+          fi
 ```
 
 ### CI Result Handler の実装
@@ -571,14 +623,19 @@ GitHub Appを使用することで、この制限を回避できます：
 
 ### ラベルベースの状態管理
 
-各Issueの状態を明確に管理：
+各Issue/PRの状態を明確に管理：
 
+#### Issue用ラベル
 - `auto-generated`: 自動生成されたIssue
 - `processing`: 処理中
 - `pr-ready`: PR作成準備完了
 - `pr-created`: PR作成済み
+
+#### PR用ラベル
 - `ci-passed`: CI成功
 - `ci-failure`: CI失敗
+- `reviewed`: レビュー完了
+- `review-fixed`: レビュー修正完了（マージ準備完了）
 
 ### 監視とアラート
 
