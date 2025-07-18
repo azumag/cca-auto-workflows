@@ -221,27 +221,27 @@ jobs:
                   head: prInfo.head,
                   base: prInfo.base
                 });
-                  
-                  // Issue にコメントを追加
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issueNumber,
-                    body: `PR created: ${pr.data.html_url}`
-                  });
-                  
-                  // pr-created ラベルを追加
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issueNumber,
-                    labels: ['pr-created']
-                  });
-                  
-                  console.log(`PR created: ${pr.data.html_url}`);
-                } else {
-                  throw new Error('Invalid PR URL format');
-                }
+                
+                // Issue にコメントを追加
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `PR created: ${pr.data.html_url}`
+                });
+                
+                // pr-created ラベルを追加
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels: ['pr-created']
+                });
+                
+                console.log(`PR created: ${pr.data.html_url}`);
+              } else {
+                throw new Error('Invalid PR URL format');
+              }
               } else {
                 throw new Error('Create PR link not found in comments');
               }
