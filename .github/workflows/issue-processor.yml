@@ -26,8 +26,6 @@ jobs:
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           fetch-depth: 1
 
-
-           
       - name: Run Claude Code for Issue Implementation
         id: claude
         uses: anthropics/claude-code-action@beta
@@ -55,19 +53,16 @@ jobs:
             - 実装できない場合は、理由をコメントで説明してください
             - PR作成リンクを提供してください
 
-      - name: Remove processing label and run Claude
+      - name: Remove processing label
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           script: |
-            const issueNumber = context.payload.issue.number;
-            
-            // processing ラベルを削除
             try {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: issueNumber,
+                issue_number: context.payload.issue.number,
                 name: 'processing'
               });
               console.log('Removed processing label');
@@ -75,57 +70,46 @@ jobs:
               console.log('processing label not found or already removed');
             }
 
-      - name: Check if pr-ready label exists
+      - name: Check for pr-ready label
         id: check-pr-ready
         if: always()
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           script: |
-            const issueNumber = context.payload.issue.number;
-            
             try {
-              // Issue の現在のラベルを取得
               const issue = await github.rest.issues.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: issueNumber
+                issue_number: context.payload.issue.number
               });
               
               const hasPrReadyLabel = issue.data.labels.some(label => label.name === 'pr-ready');
               
-              if (!hasPrReadyLabel) {
-                console.log('pr-ready label not found, skipping PR creation');
-                return;
-              }
-              
-              console.log('pr-ready label found, proceeding to create PR');
-              
-              // pr-ready ラベルを削除
-              try {
+              if (hasPrReadyLabel) {
+                console.log('pr-ready label found');
+                core.setOutput('create_pr', 'true');
+                core.setOutput('issue_number', context.payload.issue.number);
+                core.setOutput('issue_title', issue.data.title);
+                
+                // pr-ready ラベルを削除
                 await github.rest.issues.removeLabel({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  issue_number: issueNumber,
+                  issue_number: context.payload.issue.number,
                   name: 'pr-ready'
                 });
-                console.log('Removed pr-ready label');
-              } catch (error) {
-                console.log('pr-ready label removal failed:', error);
+              } else {
+                console.log('pr-ready label not found');
+                core.setOutput('create_pr', 'false');
               }
-              
-              // GitHub App Token を使用するために次のステップに情報を渡す
-              core.setOutput('create_pr', 'true');
-              core.setOutput('issue_number', issueNumber);
-              core.setOutput('issue_title', issue.data.title);
-              
             } catch (error) {
               console.error('Error checking pr-ready label:', error);
               core.setOutput('create_pr', 'false');
             }
 
       - name: Generate GitHub App Token
-        if: always() && steps.check-pr-ready.outputs.create_pr == 'true'
+        if: steps.check-pr-ready.outputs.create_pr == 'true'
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
@@ -133,149 +117,78 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Create Pull Request
-        if: always() && steps.check-pr-ready.outputs.create_pr == 'true'
+        if: steps.check-pr-ready.outputs.create_pr == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const issueNumber = ${{ steps.check-pr-ready.outputs.issue_number }};
-            const issueTitle = `${{ steps.check-pr-ready.outputs.issue_title }}`;
-            
             try {
-              // Issueのコメントを取得して、Create PRリンクを探す
+              const issueNumber = ${{ steps.check-pr-ready.outputs.issue_number }};
+              const issueTitle = `${{ steps.check-pr-ready.outputs.issue_title }}`;
+              
+              // Get comments to find Create PR link
               const comments = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber
               });
               
-              // 最新のコメントからCreate PRリンクを検索
               let prUrl = null;
-              console.log(`Found ${comments.data.length} comments`);
-              
               for (const comment of comments.data.reverse()) {
-                console.log(`Checking comment: ${comment.body.substring(0, 100)}...`);
-                
-                // 複数のパターンでマッチを試行
-                const patterns = [
-                  /\[Create PR\]\((https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+)\)/,
-                  /https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+/g
-                ];
-                
-                for (const pattern of patterns) {
-                  const matches = comment.body.match(pattern);
-                  if (matches) {
-                    console.log(`Found match with pattern: ${pattern}`);
-                    console.log(`Matches: ${JSON.stringify(matches)}`);
-                    // URLのみを抽出（マークダウンリンクの場合は括弧内のURL）
-                    prUrl = matches[0].includes('[Create PR]') ? matches[1] : matches[0];
-                    console.log(`Extracted PR URL: ${prUrl}`);
-                    break;
-                  }
+                const urlMatch = comment.body.match(/https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+/);
+                if (urlMatch) {
+                  prUrl = urlMatch[0];
+                  break;
                 }
-                
-                if (prUrl) break;
               }
               
-              if (prUrl) {
-                // GitHub Compare URLを解析する関数
-                function parseCompareUrl(url) {
-                  try {
-                    console.log('Parsing URL:', url);
-                    const urlObj = new URL(url);
-                    console.log('URL pathname:', urlObj.pathname);
-                    
-                    // パス名から /compare/base...head の部分を抽出
-                    const pathMatch = urlObj.pathname.match(/\/compare\/(.+)\.\.\.(.+)/);
-                    if (!pathMatch) {
-                      console.error('Path match failed for:', urlObj.pathname);
-                      return null;
-                    }
-                    
-                    console.log('Base:', pathMatch[1], 'Head:', pathMatch[2]);
-                    
-                    return {
-                      base: pathMatch[1],
-                      head: pathMatch[2],
-                      title: urlObj.searchParams.get('title'),
-                      body: urlObj.searchParams.get('body')
-                    };
-                  } catch (error) {
-                    console.error('URL parsing error:', error);
-                    return null;
-                  }
-                }
-                
-                // URLから情報を抽出
-                console.log('Found URL:', prUrl);
-                const prInfo = parseCompareUrl(prUrl);
-                console.log('Parsed info:', JSON.stringify(prInfo, null, 2));
-                if (!prInfo) throw new Error('Invalid URL format');
-                
-                // プルリクエストを作成
-                const pr = await github.rest.pulls.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title: prInfo.title || `Fix: ${issueTitle}`,
-                  body: prInfo.body || `Fixes #${issueNumber}\n\nAuto-generated PR to resolve issue.`,
-                  head: prInfo.head,
-                  base: prInfo.base
-                });
-                
-                // Issue にコメントを追加
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  body: `PR created: ${pr.data.html_url}`
-                });
-                
-                // pr-created ラベルを追加
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  labels: ['pr-created']
-                });
-                
-                console.log(`PR created: ${pr.data.html_url}`);
-              } else {
-                throw new Error('Invalid PR URL format');
-              }
-              } else {
+              if (!prUrl) {
                 throw new Error('Create PR link not found in comments');
               }
               
-            } catch (error) {
-              console.error('PR creation error:', error);
-              
-              // エラーメッセージとレスポンスの詳細をログ出力
-              let errorMessage = error.message;
-              let shouldCloseIssue = false;
-              
-              // GitHub API エラーレスポンスの解析
-              if (error.status === 422 && error.response?.data?.errors) {
-                const errors = error.response.data.errors;
-                console.log('Validation errors:', JSON.stringify(errors, null, 2));
-                
-                // headフィールドのinvalidエラーをチェック
-                const headError = errors.find(err => 
-                  err.resource === 'PullRequest' && 
-                  err.field === 'head' && 
-                  err.code === 'invalid'
-                );
-                
-                if (headError) {
-                  shouldCloseIssue = true;
-                  errorMessage = `Invalid head branch: ${headError.message || 'Branch does not exist or is not accessible'}`;
-                }
+              // Parse URL
+              const urlObj = new URL(prUrl);
+              const pathMatch = urlObj.pathname.match(/\/compare\/(.+)\.\.\.(.+)/);
+              if (!pathMatch) {
+                throw new Error('Invalid PR URL format');
               }
               
-              // エラーコメントを投稿
+              const base = pathMatch[1];
+              const head = pathMatch[2];
+              
+              // Create PR
+              const pr = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Fix: ${issueTitle}`,
+                body: `Fixes #${issueNumber}\n\nAuto-generated PR to resolve issue.`,
+                head: head,
+                base: base
+              });
+              
+              // Add success comment
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `Error: ${errorMessage}${shouldCloseIssue ? '\n\nAuto-closing issue due to invalid branch reference.' : ''}`
+                body: `PR created: ${pr.data.html_url}`
+              });
+              
+              // Add pr-created label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['pr-created']
+              });
+              
+            } catch (error) {
+              console.error('Error creating PR:', error);
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ steps.check-pr-ready.outputs.issue_number }},
+                body: `Error creating PR: ${error.message}`
               });
             }
