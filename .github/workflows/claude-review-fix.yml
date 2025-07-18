@@ -1,0 +1,91 @@
+name: Claude Review Fix
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  claude-Review-fix:
+    name: Claude Review Fix
+    runs-on: ubuntu-latest
+    
+    if: |
+      (github.event.action == 'labeled' && github.event.label.name == 'reviewed')
+    
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          fetch-depth: 1
+
+      - name: Remove Review and Open Labels
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            
+            // reviewed ラベルを削除
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: 'reviewed'
+              });
+              console.log('Removed reviewed label');
+            } catch (error) {
+              console.log('reviewed label not found or already removed');
+            }
+           
+      - name: Run Claude Code for Review Fix
+        id: claude
+        uses: anthropics/claude-code-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          
+          additional_permissions: |
+            actions: read
+
+          allowed_tools: "Agent,Bash,Edit,MultiEdit,WebFetch,WebSearch,Write"
+          
+          direct_prompt: |
+            PRのレビューが完了しています。以下の点を確認してください：
+            - レビュー結果を確認し、必要な修正を行ってコミットしてください
+            - 修正が完了したら、PRを更新してください
+            - 今後の課題がある場合は、issueを作成してください
+            - ドキュメント推奨事項を確認し、必要に応じて更新してください
+            - これ以上修正が必要ない場合は、 review-fixed とラベルをPRに追加してください
+            
+
+      - name: Check and Auto-merge if review-fixed
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          
+          # Check if review-fixed label exists
+          LABELS=$(gh pr view $PR_NUMBER --json labels --jq '.labels[].name')
+          
+          if echo "$LABELS" | grep -q "review-fixed"; then
+            echo "review-fixed label found, proceeding with auto-merge"
+            
+            # Approve the PR
+            echo "Approving PR #$PR_NUMBER"
+            gh pr review $PR_NUMBER --approve
+            
+            # Merge the PR
+            echo "Merging PR #$PR_NUMBER"
+            gh pr merge $PR_NUMBER --merge --auto
+          else
+            echo "review-fixed label not found, skipping auto-merge"
+          fi

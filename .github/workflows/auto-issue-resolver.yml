@@ -13,14 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Process issues or find PR-ready issue
-        id: process_issues
+      - name: Select and add processing label to random issue
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           script: |
-            core.setOutput('issue_number', ''); // Default output
-
             const allIssues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -33,144 +30,27 @@ jobs:
               return;
             }
 
-            // 'pr' ラベルがついたIssueを探す
-            const issueToPr = allIssues.data.find(issue =>
-              issue.labels.some(label => label.name === 'pr')
+            // processing ラベルが付いていないissueをフィルタリング
+            const availableIssues = allIssues.data.filter(issue =>
+              !issue.labels.some(label => label.name === 'processing')
             );
 
-            if (issueToPr) {
-              console.log(`Found issue #${issueToPr.number} with 'pr' label. Preparing to create a pull request.`);
-              core.setOutput('issue_number', issueToPr.number);
-              core.setOutput('issue_title', issueToPr.title);
-            } else {
-              console.log("No issue with 'pr' label found. Selecting a random issue to process.");
-              // ランダムに一つ選択
-              const randomIndex = Math.floor(Math.random() * allIssues.data.length);
-              const selectedIssue = allIssues.data[randomIndex];
-
-              // @claudeメンションコメントを投稿
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: selectedIssue.number,
-                body: [
-                  `@claude このIssue #${selectedIssue.number} を解決してください。`,
-                  'もし、すでに解決済みの場合は、resolved とラベルをつけ、issueをクローズしてください。',
-                  '以下の内容に基づいて実装し、実装が完了した場合は pr とラベルをつけてください',
-                  '',
-                  `**タイトル**: ${selectedIssue.title}`,
-                  '',
-                  '**説明**:',
-                  selectedIssue.body || '説明なし'
-                ].join('\n')
-              });
-
-              console.log(`Randomly selected issue #${selectedIssue.number} for processing`);
-              console.log('Claude Code Action will be triggered by the mention');
-            }
-      - name: Generate GitHub App Token
-        if: steps.process_issues.outputs.issue_number != ''
-        id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Extract and Create PR
-        if: steps.process_issues.outputs.issue_number != ''
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            // GitHub Compare URLを解析
-            function parseCompareUrl(url) {
-              try {
-                console.log('Parsing URL:', url);
-                const urlObj = new URL(url);
-                console.log('URL pathname:', urlObj.pathname);
-                
-                // パス名から /compare/base...head の部分を抽出
-                const pathMatch = urlObj.pathname.match(/\/compare\/(.+)\.\.\.(.+)/);
-                if (!pathMatch) {
-                  console.error('Path match failed for:', urlObj.pathname);
-                  return null;
-                }
-                
-                console.log('Base:', pathMatch[1], 'Head:', pathMatch[2]);
-                
-                return {
-                  base: pathMatch[1],
-                  head: pathMatch[2],
-                  title: urlObj.searchParams.get('title'),
-                  body: urlObj.searchParams.get('body')
-                };
-              } catch (error) {
-                console.error('URL parsing error:', error);
-                return null;
-              }
-            }
-
-            // issue_numberを取得
-            const issueNumber = '${{ steps.process_issues.outputs.issue_number }}';
-            
-            // Issueのコメントを取得
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber
-            });
-            
-            // 最新のコメントからCreate PRリンクを検索
-            let urlMatch = null;
-            for (const comment of comments.data.reverse()) {
-              const match = comment.body.match(/https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+/);
-              if (match) {
-                urlMatch = match;
-                break;
-              }
-            }
-            
-            if (!urlMatch) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: 'Create PR link not found'
-              });
+            if (availableIssues.length === 0) {
+              console.log('No issues available for processing (all already have processing label)');
               return;
             }
 
-            // URL解析とPR作成
-            try {
-              console.log('Found URL:', urlMatch[0]);
-              const prInfo = parseCompareUrl(urlMatch[0]);
-              console.log('Parsed info:', JSON.stringify(prInfo, null, 2));
-              if (!prInfo) throw new Error('Invalid URL format');
+            // ランダムに一つ選択
+            const randomIndex = Math.floor(Math.random() * availableIssues.length);
+            const selectedIssue = availableIssues[randomIndex];
 
+            // processing ラベルを追加
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: selectedIssue.number,
+              labels: ['processing']
+            });
 
-              const newPR = await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: prInfo.title || `PR: ${prInfo.head} → ${prInfo.base}`,
-                body: prInfo.body || `Auto-created PR from ${prInfo.head}`,
-                head: prInfo.head,
-                base: prInfo.base
-              });
-
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `PR created: ${newPR.data.html_url}`
-              });
-
-            } catch (error) {
-              console.error('Error creating PR:', error);
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `Error creating PR: ${error.message}`
-              });
-            }
+            console.log(`Added processing label to issue #${selectedIssue.number}: ${selectedIssue.title}`);
             
