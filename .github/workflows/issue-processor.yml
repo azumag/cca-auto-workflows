@@ -270,6 +270,6 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `❌ Error: ${errorMessage}${shouldCloseIssue ? '\n\n🔒 Auto-closing issue due to invalid branch reference.' : ''}`
+                body: `Error: ${errorMessage}${shouldCloseIssue ? '\n\nAuto-closing issue due to invalid branch reference.' : ''}`
               });
             }
