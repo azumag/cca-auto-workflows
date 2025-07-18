@@ -172,21 +172,49 @@ jobs:
               }
               
               if (prUrl) {
+                // GitHub Compare URLを解析する関数
+                function parseCompareUrl(url) {
+                  try {
+                    console.log('Parsing URL:', url);
+                    const urlObj = new URL(url);
+                    console.log('URL pathname:', urlObj.pathname);
+                    
+                    // パス名から /compare/base...head の部分を抽出
+                    const pathMatch = urlObj.pathname.match(/\/compare\/(.+)\.\.\.(.+)/);
+                    if (!pathMatch) {
+                      console.error('Path match failed for:', urlObj.pathname);
+                      return null;
+                    }
+                    
+                    console.log('Base:', pathMatch[1], 'Head:', pathMatch[2]);
+                    
+                    return {
+                      base: pathMatch[1],
+                      head: pathMatch[2],
+                      title: urlObj.searchParams.get('title'),
+                      body: urlObj.searchParams.get('body')
+                    };
+                  } catch (error) {
+                    console.error('URL parsing error:', error);
+                    return null;
+                  }
+                }
+                
                 // URLから情報を抽出
-                const urlMatch = prUrl.match(/\/compare\/(.+)\.\.\.(.+)/);
-                if (urlMatch) {
-                  const base = urlMatch[1];
-                  const head = urlMatch[2];
-                  
-                  // プルリクエストを作成
-                  const pr = await github.rest.pulls.create({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    title: `Fix: ${issueTitle}`,
-                    body: `Fixes #${issueNumber}\n\nAuto-generated PR to resolve issue.`,
-                    head: head,
-                    base: base || 'main'
-                  });
+                console.log('Found URL:', prUrl);
+                const prInfo = parseCompareUrl(prUrl);
+                console.log('Parsed info:', JSON.stringify(prInfo, null, 2));
+                if (!prInfo) throw new Error('Invalid URL format');
+                
+                // プルリクエストを作成
+                const pr = await github.rest.pulls.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: prInfo.title || `Fix: ${issueTitle}`,
+                  body: prInfo.body || `Fixes #${issueNumber}\n\nAuto-generated PR to resolve issue.`,
+                  head: prInfo.head,
+                  base: prInfo.base
+                });
                   
                   // Issue にコメントを追加
                   await github.rest.issues.createComment({
@@ -213,13 +241,35 @@ jobs:
               }
               
             } catch (error) {
-              console.error('Error creating PR:', error);
+              console.error('PR creation error:', error);
               
-              // Issue にエラーコメントを追加
+              // エラーメッセージとレスポンスの詳細をログ出力
+              let errorMessage = error.message;
+              let shouldCloseIssue = false;
+              
+              // GitHub API エラーレスポンスの解析
+              if (error.status === 422 && error.response?.data?.errors) {
+                const errors = error.response.data.errors;
+                console.log('Validation errors:', JSON.stringify(errors, null, 2));
+                
+                // headフィールドのinvalidエラーをチェック
+                const headError = errors.find(err => 
+                  err.resource === 'PullRequest' && 
+                  err.field === 'head' && 
+                  err.code === 'invalid'
+                );
+                
+                if (headError) {
+                  shouldCloseIssue = true;
+                  errorMessage = `Invalid head branch: ${headError.message || 'Branch does not exist or is not accessible'}`;
+                }
+              }
+              
+              // エラーコメントを投稿
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `Error creating PR: ${error.message}`
+                body: `❌ Error: ${errorMessage}${shouldCloseIssue ? '\n\n🔒 Auto-closing issue due to invalid branch reference.' : ''}`
               });
             }
