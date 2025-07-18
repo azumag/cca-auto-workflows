@@ -145,12 +145,30 @@ jobs:
               
               // 最新のコメントからCreate PRリンクを検索
               let prUrl = null;
+              console.log(`Found ${comments.data.length} comments`);
+              
               for (const comment of comments.data.reverse()) {
-                const match = comment.body.match(/\[Create PR\]\((https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+)\)/);
-                if (match) {
-                  prUrl = match[1];
-                  break;
+                console.log(`Checking comment: ${comment.body.substring(0, 100)}...`);
+                
+                // 複数のパターンでマッチを試行
+                const patterns = [
+                  /\[Create PR\]\((https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+)\)/,
+                  /https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+/g
+                ];
+                
+                for (const pattern of patterns) {
+                  const matches = comment.body.match(pattern);
+                  if (matches) {
+                    console.log(`Found match with pattern: ${pattern}`);
+                    console.log(`Matches: ${JSON.stringify(matches)}`);
+                    // URLのみを抽出（マークダウンリンクの場合は括弧内のURL）
+                    prUrl = matches[0].includes('[Create PR]') ? matches[1] : matches[0];
+                    console.log(`Extracted PR URL: ${prUrl}`);
+                    break;
+                  }
                 }
+                
+                if (prUrl) break;
               }
               
               if (prUrl) {
