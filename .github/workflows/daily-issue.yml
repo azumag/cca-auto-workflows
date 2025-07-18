@@ -1,0 +1,42 @@
+name: Daily Issue Creator
+
+on:
+  schedule:
+    # 毎日午前6時（JST）に実行 (UTC 21:00)
+    - cron: '0 21 * * *'
+  workflow_dispatch: # 手動実行も可能
+
+jobs:
+  create-daily-issue:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Create System Improvement Issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const title = "システム改善";
+            const body = [
+              "# Daily System Improvement Task",
+              "## 概要",
+              "このタスクは、システムの改善を目的とした日次のタスクです。",
+              "## 目的",
+              "システムのパフォーマンス向上、バグ修正、ユーザビリティの向上など、日々の改善を行います。",
+              "## タスク内容",
+              "- 新しい機能の提案や既存機能の改善案を検討",
+              "- コードの品質向上",
+              "- パフォーマンスの最適化",
+              "- リファクタリング",
+              "- ドキュメント更新",
+            ].join('\n');
+            
+            // 新しいissueを作成
+            const newIssue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['daily-task', 'auto-generated']
+            });
+            
