@@ -146,5 +146,13 @@ jobs:
                 body: `✅ PR created: ${newPR.data.html_url}`
               });
 
+            } catch (error) {
+              console.error('Error creating PR:', error);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: `❌ Error creating PR: ${error.message}`
+              });
             }
             
