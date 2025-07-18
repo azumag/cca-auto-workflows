@@ -75,7 +75,7 @@ jobs:
               console.log('processing label not found or already removed');
             }
 
-      - name: Check if pr-ready label exists and create PR
+      - name: Check if pr-ready label exists
         id: check-pr-ready
         if: always()
         uses: actions/github-script@v7
@@ -84,39 +84,45 @@ jobs:
           script: |
             const issueNumber = context.payload.issue.number;
             
-            // Issue の現在のラベルを取得
-            const issue = await github.rest.issues.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber
-            });
-            
-            const hasPrReadyLabel = issue.data.labels.some(label => label.name === 'pr-ready');
-            
-            if (!hasPrReadyLabel) {
-              console.log('pr-ready label not found, skipping PR creation');
-              return;
-            }
-            
-            console.log('pr-ready label found, proceeding to create PR');
-            
-            // pr-ready ラベルを削除
             try {
-              await github.rest.issues.removeLabel({
+              // Issue の現在のラベルを取得
+              const issue = await github.rest.issues.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: issueNumber,
-                name: 'pr-ready'
+                issue_number: issueNumber
               });
-              console.log('Removed pr-ready label');
+              
+              const hasPrReadyLabel = issue.data.labels.some(label => label.name === 'pr-ready');
+              
+              if (!hasPrReadyLabel) {
+                console.log('pr-ready label not found, skipping PR creation');
+                return;
+              }
+              
+              console.log('pr-ready label found, proceeding to create PR');
+              
+              // pr-ready ラベルを削除
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: 'pr-ready'
+                });
+                console.log('Removed pr-ready label');
+              } catch (error) {
+                console.log('pr-ready label removal failed:', error);
+              }
+              
+              // GitHub App Token を使用するために次のステップに情報を渡す
+              core.setOutput('create_pr', 'true');
+              core.setOutput('issue_number', issueNumber);
+              core.setOutput('issue_title', issue.data.title);
+              
             } catch (error) {
-              console.log('pr-ready label removal failed:', error);
+              console.error('Error checking pr-ready label:', error);
+              core.setOutput('create_pr', 'false');
             }
-            
-            // GitHub App Token を使用するために次のステップに情報を渡す
-            core.setOutput('create_pr', 'true');
-            core.setOutput('issue_number', issueNumber);
-            core.setOutput('issue_title', issue.data.title);
 
       - name: Generate GitHub App Token
         if: always() && steps.check-pr-ready.outputs.create_pr == 'true'
