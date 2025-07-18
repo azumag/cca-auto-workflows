@@ -1,6 +1,13 @@
 # Claude Code Auto Workflows
 
+[![GitHub Issues](https://img.shields.io/github/issues/azumag/cca-auto-workflows)](https://github.com/azumag/cca-auto-workflows/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/azumag/cca-auto-workflows)](https://github.com/azumag/cca-auto-workflows/pulls)
+[![License](https://img.shields.io/github/license/azumag/cca-auto-workflows)](LICENSE)
+[![Claude Code](https://img.shields.io/badge/Powered%20by-Claude%20Code-orange)](https://claude.ai/code)
+
 A comprehensive GitHub Actions workflow system that automates issue processing, code review, and pull request management using Claude Code.
+
+> **⚡ Fully Automated Development Workflow**: This repository demonstrates a complete automation pipeline where issues are automatically selected, processed by Claude Code, converted to pull requests, reviewed, and merged without manual intervention.
 
 ## Table of Contents
 - [Workflow Overview](#workflow-overview)
@@ -130,14 +137,21 @@ graph LR
 ## Setup Instructions
 
 ### Quick Setup Sequence
-1. Install Claude Code CLI
-2. Run `/install-github-app` and install Claude Code Actions
-3. Create and install GitHub App with required permissions
-4. Set `APP_ID` and `APP_PRIVATE_KEY` in repository secrets
-5. Create Personal Access Token with required permissions
-6. Add PAT as `PERSONAL_ACCESS_TOKEN` in repository secrets
-7. Add `CLAUDE_CODE_OAUTH_TOKEN` to repository secrets
-8. Create all required labels in your repository
+1. **Install Claude Code CLI**: `npm install -g @anthropic-ai/claude-code`
+2. **Setup OAuth**: Run `claude setup-token` to get your OAuth token
+3. **Install GitHub App**: Run `/install-github-app` in Claude Code CLI
+4. **Create Custom GitHub App** (for advanced permissions):
+   - Follow the detailed GitHub App Configuration section below
+   - Set `APP_ID` and `APP_PRIVATE_KEY` in repository secrets
+5. **Create Personal Access Token** with required scopes
+6. **Add Repository Secrets**:
+   - `PERSONAL_ACCESS_TOKEN`: Your PAT
+   - `CLAUDE_CODE_OAUTH_TOKEN`: From step 2
+   - `APP_ID` & `APP_PRIVATE_KEY`: From step 4
+7. **Create Labels**: Run the label creation commands provided below
+8. **Copy Workflow Files**: Add the workflow files from this repository to `.github/workflows/`
+
+> **⚠️ Important**: Complete all steps in order. Missing secrets or labels will cause workflow failures.
 
 ## Required Labels
 
@@ -251,8 +265,10 @@ Create a Personal Access Token with the following scopes:
   - `repo_deployment` - Access deployment status
   - `public_repo` - Access public repositories
 - `workflow` - Update GitHub Action workflows
-- `write:packages` - Upload packages to GitHub Package Registry
-- `read:packages` - Download packages from GitHub Package Registry
+- `write:packages` - Upload packages to GitHub Package Registry (optional)
+- `read:packages` - Download packages from GitHub Package Registry (optional)
+
+> **Security Note**: For production environments, consider using fine-grained personal access tokens with minimal required permissions.
 
 ### Token Creation Steps
 1. Go to GitHub Settings > Developer Settings > Personal Access Tokens > Tokens (classic)
@@ -317,6 +333,36 @@ graph TD
     style H fill:#ccffcc
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+#### Workflow Not Triggering
+- **Issue**: Claude doesn't respond to @claude mentions
+- **Solution**: Check that the triggering user has write permissions to the repository
+- **Check**: Verify `CLAUDE_CODE_OAUTH_TOKEN` is correctly set in repository secrets
+
+#### Label Processing Issues
+- **Issue**: Issues stuck in 'processing' state
+- **Solution**: Check that all required labels are created in the repository
+- **Command**: Use the label creation script provided in the setup section
+
+#### Permission Errors
+- **Issue**: "Resource not accessible" errors in workflows
+- **Solution**: Verify GitHub App has all required permissions listed in the setup
+- **Check**: Ensure Personal Access Token has sufficient scopes
+
+#### CI Integration Problems
+- **Issue**: CI status not updating properly
+- **Solution**: Check that `actions: read` permission is granted to workflows
+- **Verify**: Ensure CI workflow names match those expected by the handlers
+
+### Debug Mode
+To enable detailed logging in workflows, add the following secret:
+```
+ACTIONS_STEP_DEBUG=true
+```
+
 ## Important Notes
 
 ### anthropics/claude-code-action@beta Limitations
@@ -328,3 +374,6 @@ These limitations only apply to the Claude Code Action. Regular `github-script` 
 
 ### Auto-Generated Content Restrictions
 Automatic comments, labels, and other content created by GitHub Actions workflows cannot trigger additional action workflows. Use Personal Access Token (PAT) for actions that need to trigger other workflows.
+
+### Rate Limiting
+Be aware of GitHub API rate limits when running frequent automated workflows. The hourly cron job helps distribute load, but monitor usage in high-activity repositories.
