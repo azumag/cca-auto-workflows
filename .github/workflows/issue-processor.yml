@@ -63,8 +63,8 @@ jobs:
               console.log('processing label not found or already removed');
             }
 
-      - name: Check for pr-ready label
-        id: check-pr-ready
+      - name: Check for PR creation trigger
+        id: check-pr-trigger
         if: always()
         uses: actions/github-script@v7
         with:
@@ -79,30 +79,52 @@ jobs:
               
               const hasPrReadyLabel = issue.data.labels.some(label => label.name === 'pr-ready');
               
-              if (hasPrReadyLabel) {
-                console.log('pr-ready label found');
+              // コメントを取得してPRリンクを探す
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number
+              });
+              
+              let hasPrLink = false;
+              if (comments.data.length > 0) {
+                const lastComment = comments.data[comments.data.length - 1];
+                const prLinkMatch = lastComment.body.match(/https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+/);
+                if (prLinkMatch) {
+                  hasPrLink = true;
+                  console.log('PR link found in latest comment:', prLinkMatch[0]);
+                }
+              }
+              
+              if (hasPrReadyLabel || hasPrLink) {
+                if (hasPrReadyLabel) {
+                  console.log('pr-ready label found');
+                  // pr-ready ラベルを削除
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: context.payload.issue.number,
+                    name: 'pr-ready'
+                  });
+                }
+                if (hasPrLink) {
+                  console.log('PR link found in latest comment');
+                }
+                
                 core.setOutput('create_pr', 'true');
                 core.setOutput('issue_number', context.payload.issue.number);
                 core.setOutput('issue_title', issue.data.title);
-                
-                // pr-ready ラベルを削除
-                await github.rest.issues.removeLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.payload.issue.number,
-                  name: 'pr-ready'
-                });
               } else {
-                console.log('pr-ready label not found');
+                console.log('Neither pr-ready label nor PR link found');
                 core.setOutput('create_pr', 'false');
               }
             } catch (error) {
-              console.error('Error checking pr-ready label:', error);
+              console.error('Error checking PR creation trigger:', error);
               core.setOutput('create_pr', 'false');
             }
 
       - name: Generate GitHub App Token
-        if: steps.check-pr-ready.outputs.create_pr == 'true'
+        if: steps.check-pr-trigger.outputs.create_pr == 'true'
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
@@ -110,14 +132,14 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Create Pull Request
-        if: steps.check-pr-ready.outputs.create_pr == 'true'
+        if: steps.check-pr-trigger.outputs.create_pr == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             try {
-              const issueNumber = ${{ steps.check-pr-ready.outputs.issue_number }};
-              const issueTitle = `${{ steps.check-pr-ready.outputs.issue_title }}`;
+              const issueNumber = ${{ steps.check-pr-trigger.outputs.issue_number }};
+              const issueTitle = `${{ steps.check-pr-trigger.outputs.issue_title }}`;
               
               // Get comments to find Create PR link
               const comments = await github.rest.issues.listComments({
@@ -181,7 +203,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: ${{ steps.check-pr-ready.outputs.issue_number }},
+                issue_number: ${{ steps.check-pr-trigger.outputs.issue_number }},
                 body: `Error creating PR: ${error.message}`
               });
             }
