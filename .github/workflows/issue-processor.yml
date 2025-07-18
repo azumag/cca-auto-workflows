@@ -53,154 +53,155 @@ jobs:
             - 実装が完了し、テストも通った場合は、'pr-ready' ラベルをこのIssueに追加してください
             - 解決済みの場合は、'resolved' ラベルをつけてIssueをクローズしてください
             - 実装できない場合は、理由をコメントで説明してください
+            - 可能であれば、PR自体を作成してください
 
-      - name: Remove processing label and run Claude
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          script: |
-            const issueNumber = context.payload.issue.number;
+      # - name: Remove processing label and run Claude
+      #   uses: actions/github-script@v7
+      #   with:
+      #     github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      #     script: |
+      #       const issueNumber = context.payload.issue.number;
             
-            // processing ラベルを削除
-            try {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                name: 'processing'
-              });
-              console.log('Removed processing label');
-            } catch (error) {
-              console.log('processing label not found or already removed');
-            }
+      #       // processing ラベルを削除
+      #       try {
+      #         await github.rest.issues.removeLabel({
+      #           owner: context.repo.owner,
+      #           repo: context.repo.repo,
+      #           issue_number: issueNumber,
+      #           name: 'processing'
+      #         });
+      #         console.log('Removed processing label');
+      #       } catch (error) {
+      #         console.log('processing label not found or already removed');
+      #       }
 
-      - name: Check if pr-ready label exists and create PR
-        id: check-pr-ready
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          script: |
-            const issueNumber = context.payload.issue.number;
+      # - name: Check if pr-ready label exists and create PR
+      #   id: check-pr-ready
+      #   if: always()
+      #   uses: actions/github-script@v7
+      #   with:
+      #     github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      #     script: |
+      #       const issueNumber = context.payload.issue.number;
             
-            // Issue の現在のラベルを取得
-            const issue = await github.rest.issues.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber
-            });
+      #       // Issue の現在のラベルを取得
+      #       const issue = await github.rest.issues.get({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         issue_number: issueNumber
+      #       });
             
-            const hasPrReadyLabel = issue.data.labels.some(label => label.name === 'pr-ready');
+      #       const hasPrReadyLabel = issue.data.labels.some(label => label.name === 'pr-ready');
             
-            if (!hasPrReadyLabel) {
-              console.log('pr-ready label not found, skipping PR creation');
-              return;
-            }
+      #       if (!hasPrReadyLabel) {
+      #         console.log('pr-ready label not found, skipping PR creation');
+      #         return;
+      #       }
             
-            console.log('pr-ready label found, proceeding to create PR');
+      #       console.log('pr-ready label found, proceeding to create PR');
             
-            // pr-ready ラベルを削除
-            try {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                name: 'pr-ready'
-              });
-              console.log('Removed pr-ready label');
-            } catch (error) {
-              console.log('pr-ready label removal failed:', error);
-            }
+      #       // pr-ready ラベルを削除
+      #       try {
+      #         await github.rest.issues.removeLabel({
+      #           owner: context.repo.owner,
+      #           repo: context.repo.repo,
+      #           issue_number: issueNumber,
+      #           name: 'pr-ready'
+      #         });
+      #         console.log('Removed pr-ready label');
+      #       } catch (error) {
+      #         console.log('pr-ready label removal failed:', error);
+      #       }
             
-            // GitHub App Token を使用するために次のステップに情報を渡す
-            core.setOutput('create_pr', 'true');
-            core.setOutput('issue_number', issueNumber);
-            core.setOutput('issue_title', issue.data.title);
+      #       // GitHub App Token を使用するために次のステップに情報を渡す
+      #       core.setOutput('create_pr', 'true');
+      #       core.setOutput('issue_number', issueNumber);
+      #       core.setOutput('issue_title', issue.data.title);
 
-      - name: Generate GitHub App Token
-        if: always() && steps.check-pr-ready.outputs.create_pr == 'true'
-        id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      # - name: Generate GitHub App Token
+      #   if: always() && steps.check-pr-ready.outputs.create_pr == 'true'
+      #   id: app-token
+      #   uses: actions/create-github-app-token@v2
+      #   with:
+      #     app-id: ${{ secrets.APP_ID }}
+      #     private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Create Pull Request
-        if: always() && steps.check-pr-ready.outputs.create_pr == 'true'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            const issueNumber = ${{ steps.check-pr-ready.outputs.issue_number }};
-            const issueTitle = `${{ steps.check-pr-ready.outputs.issue_title }}`;
+      # - name: Create Pull Request
+      #   if: always() && steps.check-pr-ready.outputs.create_pr == 'true'
+      #   uses: actions/github-script@v7
+      #   with:
+      #     github-token: ${{ steps.app-token.outputs.token }}
+      #     script: |
+      #       const issueNumber = ${{ steps.check-pr-ready.outputs.issue_number }};
+      #       const issueTitle = `${{ steps.check-pr-ready.outputs.issue_title }}`;
             
-            try {
-              // Issueのコメントを取得して、Create PRリンクを探す
-              const comments = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber
-              });
+      #       try {
+      #         // Issueのコメントを取得して、Create PRリンクを探す
+      #         const comments = await github.rest.issues.listComments({
+      #           owner: context.repo.owner,
+      #           repo: context.repo.repo,
+      #           issue_number: issueNumber
+      #         });
               
-              // 最新のコメントからCreate PRリンクを検索
-              let prUrl = null;
-              for (const comment of comments.data.reverse()) {
-                const match = comment.body.match(/\[Create PR\]\((https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+)\)/);
-                if (match) {
-                  prUrl = match[1];
-                  break;
-                }
-              }
+      #         // 最新のコメントからCreate PRリンクを検索
+      #         let prUrl = null;
+      #         for (const comment of comments.data.reverse()) {
+      #           const match = comment.body.match(/\[Create PR\]\((https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/compare\/[^\s)]+)\)/);
+      #           if (match) {
+      #             prUrl = match[1];
+      #             break;
+      #           }
+      #         }
               
-              if (prUrl) {
-                // URLから情報を抽出
-                const urlMatch = prUrl.match(/\/compare\/(.+)\.\.\.(.+)/);
-                if (urlMatch) {
-                  const base = urlMatch[1];
-                  const head = urlMatch[2];
+      #         if (prUrl) {
+      #           // URLから情報を抽出
+      #           const urlMatch = prUrl.match(/\/compare\/(.+)\.\.\.(.+)/);
+      #           if (urlMatch) {
+      #             const base = urlMatch[1];
+      #             const head = urlMatch[2];
                   
-                  // プルリクエストを作成
-                  const pr = await github.rest.pulls.create({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    title: `Fix: ${issueTitle}`,
-                    body: `Fixes #${issueNumber}\n\nAuto-generated PR to resolve issue.`,
-                    head: head,
-                    base: base || 'main'
-                  });
+      #             // プルリクエストを作成
+      #             const pr = await github.rest.pulls.create({
+      #               owner: context.repo.owner,
+      #               repo: context.repo.repo,
+      #               title: `Fix: ${issueTitle}`,
+      #               body: `Fixes #${issueNumber}\n\nAuto-generated PR to resolve issue.`,
+      #               head: head,
+      #               base: base || 'main'
+      #             });
                   
-                  // Issue にコメントを追加
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issueNumber,
-                    body: `✅ PR created: ${pr.data.html_url}`
-                  });
+      #             // Issue にコメントを追加
+      #             await github.rest.issues.createComment({
+      #               owner: context.repo.owner,
+      #               repo: context.repo.repo,
+      #               issue_number: issueNumber,
+      #               body: `✅ PR created: ${pr.data.html_url}`
+      #             });
                   
-                  // pr-created ラベルを追加
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issueNumber,
-                    labels: ['pr-created']
-                  });
+      #             // pr-created ラベルを追加
+      #             await github.rest.issues.addLabels({
+      #               owner: context.repo.owner,
+      #               repo: context.repo.repo,
+      #               issue_number: issueNumber,
+      #               labels: ['pr-created']
+      #             });
                   
-                  console.log(`PR created: ${pr.data.html_url}`);
-                } else {
-                  throw new Error('Invalid PR URL format');
-                }
-              } else {
-                throw new Error('Create PR link not found in comments');
-              }
+      #             console.log(`PR created: ${pr.data.html_url}`);
+      #           } else {
+      #             throw new Error('Invalid PR URL format');
+      #           }
+      #         } else {
+      #           throw new Error('Create PR link not found in comments');
+      #         }
               
-            } catch (error) {
-              console.error('Error creating PR:', error);
+      #       } catch (error) {
+      #         console.error('Error creating PR:', error);
               
-              // Issue にエラーコメントを追加
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: `Error creating PR: ${error.message}`
-              });
-            }
+      #         // Issue にエラーコメントを追加
+      #         await github.rest.issues.createComment({
+      #           owner: context.repo.owner,
+      #           repo: context.repo.repo,
+      #           issue_number: issueNumber,
+      #           body: `Error creating PR: ${error.message}`
+      #         });
+      #       }
