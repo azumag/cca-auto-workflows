@@ -26,26 +26,26 @@ This repository implements an automated development workflow that processes issu
 ```mermaid
 graph TD
     subgraph DAILY ["Daily Issue Creator"]
-        A["**Issue 自動作成**<br>リファクタ・機能提案・ドキュメント作成など"]
+        A["**Automatic Issue Creation**<br>Refactoring, Feature Proposals, Documentation Creation, etc."]
     end
     
     subgraph RESOLVER ["Auto Issue Resolver"]
-        B["毎時ランダムIssue選択"]
-        C["processing ラベル追加"]
+        B["Random Issue Selection Every Hour"]
+        C["Add Processing Label"]
     end
     
     subgraph PROCESSOR ["Issue Processor"]
-        D["Claude Code Actions 実行/ issue 内容を実装"]
-        E["ラベル削除"]
-        H["PR 自動作成"]
+        D["Execute Claude Code Actions / Implement Issue Content"]
+        E["Remove Label"]
+        H["Automatic PR Creation"]
     end
     
     subgraph CI ["CI/CD Pipeline"]
-        J["テスト実行"]
+        J["Run Tests"]
     end
     
     subgraph HANDLER ["CI Result Handler"]
-        M{"CI結果判定"}
+        M{"Evaluate CI Results"}
         N["ci-passed"]
         O["ci-failure"]
     end
@@ -56,33 +56,33 @@ graph TD
     
     subgraph FIX ["Review Fix"]
         R["Claude Review Fix"]
-        S["修正実行"]
+        S["Execute Fix"]
     end
     
     subgraph MERGE ["Auto Merge Process"]
-        U["自動マージ実行"]
+        U["Execute Auto Merge"]
         V["Issue Close"]
     end
     
     subgraph CIFIX ["CI Fix"]
         W["Claude CI Fix"]
-        X["修正実行"]
+        X["Execute Fix"]
     end
     
     A --> B
     B --> C
-    C -->|ラベル追加で起動:PAT| D
-    D -->|失敗| E
-    D -->|成功| H
-    H -->|失敗| E
+    C -->|Triggered by Label Addition: PAT| D
+    D -->|Failure| E
+    D -->|Success| H
+    H -->|Failure| E
     H --> J
     J --> M
-    M -->|成功| N
-    M -->|失敗| O
+    M -->|Success| N
+    M -->|Failure| O
     N --> P
     P --> R
-    R -->|修正必要| S
-    R -->|修正不要| U
+    R -->|Fixes Required| S
+    R -->|No Fixes Required| U
     S --> J
     U --> V
     O --> W
