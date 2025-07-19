@@ -40,6 +40,8 @@ jobs:
           direct_prompt: |
             このIssue #${{ github.event.issue.number }} を解決してください。
             実装が完了したら、pr-ready ラベルをこの Issue に追加してください
+            - ラベル追加、PR作成、コメント追加のための権限は付与してありますかならず実行を試すこと
+            - もし権限がなくて実行できなかった場合は、どの権限が足りないかを明示してください
 
             **タイトル**: ${{ github.event.issue.title }}
             
