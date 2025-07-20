@@ -345,10 +345,13 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN --body "your_claude_oauth_token"
 | `.github/workflows/auto-issue-resolver.yml` | Automatically adds 'processing' label to random issues | Cron (hourly) |
 | `.github/workflows/issue-processor.yml` | Processes issues with Claude and creates PRs | Label: 'processing' |
 | `.github/workflows/claude.yml` | Main Claude Code integration | @claude mentions |
-| `.github/workflows/ci.yml` | Continuous Integration | PR events |
+| `.github/workflows/ci.yml` | Enhanced CI with security scanning and quality checks | PR events, Push to main |
 | `.github/workflows/ci-result-handler.yml` | Handles CI results and updates labels | CI workflow completion |
-| `.github/workflows/claude-code-review.yml` | Automated code review | Label: 'ci-passed' |
+| `.github/workflows/claude-code-review.yml` | Automated code review with enhanced error handling | Label: 'ci-passed' |
 | `.github/workflows/claude-review-fix.yml` | Handles review fixes and auto-merge | Label: 'reviewed' |
+| `.github/workflows/claude-ci-fix.yml` | Automated CI failure fixes | Label: 'ci-failure' |
+| `.github/workflows/daily-issue.yml` | Daily issue creation automation | Cron schedule |
+| `.github/workflows/system-health.yml` | **New**: System health monitoring and alerting | Cron (every 6h), Manual |
 
 ### Workflow Dependencies
 
@@ -361,6 +364,13 @@ graph TD
     E --> F[claude-review-fix.yml]
     
     G[claude.yml] --> H[Manual Claude interaction]
+    I[system-health.yml] --> J[System Monitoring]
+    I --> K[Alert Generation]
+    
+    C --> I
+    D --> I
+    E --> I
+    F --> I
     
     style A fill:#ff9999
     style B fill:#99ccff
@@ -370,6 +380,9 @@ graph TD
     style F fill:#ffff99
     style G fill:#ff99cc
     style H fill:#ccffcc
+    style I fill:#ff6b6b
+    style J fill:#4ecdc4
+    style K fill:#45b7d1
 ```
 
 ## Troubleshooting
@@ -380,26 +393,172 @@ graph TD
 - **Issue**: Claude doesn't respond to @claude mentions
 - **Solution**: Check that the triggering user has write permissions to the repository
 - **Check**: Verify `CLAUDE_CODE_OAUTH_TOKEN` is correctly set in repository secrets
+- **Advanced Debugging**:
+  ```bash
+  # Check workflow run history
+  gh run list --workflow=claude.yml --limit=10
+  
+  # Check specific run details
+  gh run view <run-id> --log
+  ```
 
 #### Label Processing Issues
 - **Issue**: Issues stuck in 'processing' state
 - **Solution**: Check that all required labels are created in the repository
 - **Command**: Use the label creation script provided in the setup section
+- **Recovery**: Manually remove 'processing' label to reset: `gh issue edit <issue-number> --remove-label processing`
 
 #### Permission Errors
 - **Issue**: "Resource not accessible" errors in workflows
 - **Solution**: Verify GitHub App has all required permissions listed in the setup
 - **Check**: Ensure Personal Access Token has sufficient scopes
+- **Diagnosis**:
+  ```bash
+  # Test GitHub token permissions
+  gh api user
+  gh api repos/:owner/:repo
+  
+  # Check repository settings
+  gh repo view --json permissions
+  ```
 
 #### CI Integration Problems
 - **Issue**: CI status not updating properly
 - **Solution**: Check that `actions: read` permission is granted to workflows
 - **Verify**: Ensure CI workflow names match those expected by the handlers
+- **Monitor**: Use the new system health check workflow to track CI reliability
+
+#### High API Usage Warnings
+- **Issue**: GitHub API rate limit approaching
+- **Solution**: 
+  - Monitor usage with system health checks (automatic)
+  - Implement request caching where possible
+  - Consider GitHub App tokens for higher limits
+  - Review workflow trigger frequency
+- **Check Usage**: `gh api rate_limit`
+
+#### Claude Code Execution Failures
+- **Issue**: Claude Code workflows failing consistently
+- **Diagnosis**:
+  ```bash
+  # Check Claude-specific workflows
+  gh run list --workflow="Claude Code" --status=failure --limit=5
+  
+  # Verify OAuth token
+  claude config
+  ```
+- **Solutions**:
+  - Refresh Claude Code OAuth token
+  - Check Claude API status
+  - Review allowed_tools configurations
+  - Verify custom instructions syntax
+
+#### Security Scan Failures
+- **Issue**: New security scanning jobs failing
+- **Solution**: 
+  - Check Trivy scanner configuration
+  - Verify CodeQL setup for supported languages
+  - Review SARIF upload permissions
+- **Debug**: Check security tab in GitHub repository for scan results
+
+### System Health Monitoring
+
+The repository now includes automated system health monitoring that runs every 6 hours:
+
+#### Automated Alerts
+- **API Rate Limits**: Alerts when GitHub API usage exceeds 80%
+- **Workflow Failures**: Reports when failure rate exceeds 30% in 24h
+- **Claude Usage**: Monitors Claude Code usage patterns and optimization opportunities
+
+#### Manual Health Checks
+```bash
+# Trigger system health check manually
+gh workflow run system-health.yml
+
+# View recent health check results
+gh run list --workflow=system-health.yml --limit=5
+```
 
 ### Debug Mode
-To enable detailed logging in workflows, add the following secret:
+To enable detailed logging in workflows, add the following secrets:
+```bash
+gh secret set ACTIONS_STEP_DEBUG --body "true"
+gh secret set ACTIONS_RUNNER_DEBUG --body "true"
 ```
-ACTIONS_STEP_DEBUG=true
+
+### Performance Optimization Tips
+
+#### Workflow Efficiency
+- Use dependency caching for Node.js projects
+- Implement conditional job execution based on file changes
+- Use matrix strategies for parallel testing
+- Monitor workflow execution times with the health check system
+
+#### Resource Management
+- Regular cleanup of old workflow runs: `gh run list --status=completed --limit=100 | xargs -I {} gh run delete {}`
+- Archive logs older than 90 days
+- Monitor secret usage and rotate regularly
+
+### Security Best Practices
+
+#### Token Management
+```bash
+# Rotate Personal Access Token quarterly
+gh auth refresh
+
+# Audit secret usage
+gh secret list
+
+# Check repository security settings
+gh repo view --json securityAndAnalysis
+```
+
+#### Monitoring
+- Enable security scanning in CI pipeline (automatic)
+- Regular dependency audits
+- Monitor for unusual API usage patterns
+- Review workflow permissions quarterly
+
+### Recovery Procedures
+
+#### Stuck Workflows
+```bash
+# Cancel running workflows
+gh run list --status=in_progress
+gh run cancel <run-id>
+
+# Reset issue processing state
+gh issue edit <issue-number> --remove-label processing,pr-ready,reviewed
+```
+
+#### Emergency Fixes
+```bash
+# Disable auto-issue-resolver temporarily
+gh workflow disable auto-issue-resolver.yml
+
+# Skip CI for emergency fixes
+git commit -m "fix: emergency patch [skip ci]"
+```
+
+### Support and Documentation
+
+#### Getting Help
+- Check system health alerts for automated diagnostics
+- Review workflow run logs for detailed error information
+- Use GitHub Discussions for community support
+- Report bugs via GitHub Issues with workflow run URLs
+
+#### Useful Commands
+```bash
+# Quick system status
+gh repo view --json permissions,security
+gh run list --limit=10
+gh api rate_limit
+
+# Workflow management
+gh workflow list
+gh workflow enable <workflow-name>
+gh workflow disable <workflow-name>
 ```
 
 ## Important Notes
