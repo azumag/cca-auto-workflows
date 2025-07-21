@@ -33,7 +33,7 @@ This repository contains automated workflows that integrate Claude Code with Git
 
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/yourusername/cca-auto-workflows.git
+   git clone https://github.com/azumag/cca-auto-workflows.git
    cd cca-auto-workflows
    ```
 
