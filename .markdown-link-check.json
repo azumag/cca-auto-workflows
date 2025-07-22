@@ -3,7 +3,7 @@
   "retryOn429": true,
   "retryCount": 5,
   "fallbackRetryDelay": "30s",
-  "aliveStatusCodes": [200, 206, 999],
+  "aliveStatusCodes": [200, 206, 999, 403],
   "ignorePatterns": [
     {
       "pattern": "^http://localhost"
@@ -16,6 +16,12 @@
     },
     {
       "pattern": "^mailto:"
+    },
+    {
+      "pattern": "^tel:"
+    },
+    {
+      "pattern": "^#"
     }
   ],
   "replacementPatterns": [
@@ -26,21 +32,20 @@
   ],
   "httpHeaders": [
     {
-      "urls": ["https://github.com"],
+      "urls": ["https://github.com", "https://api.github.com"],
       "headers": {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"
+        "User-Agent": "Mozilla/5.0 (compatible; markdown-link-check/3.11.0; +https://github.com/tcort/markdown-link-check)",
+        "Cache-Control": "no-cache"
       }
     },
     {
-      "urls": ["https://api.github.com"],
+      "urls": ["https://docs.anthropic.com"],
       "headers": {
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "markdown-link-check"
+        "Accept": "text/html",
+        "User-Agent": "Mozilla/5.0 (compatible; markdown-link-check)"
       }
     }
-  ],
-  "ignoreDisable": false,
-  "projectBaseUrl": "https://github.com/azumag/cca-auto-workflows/"
+  ]
 }

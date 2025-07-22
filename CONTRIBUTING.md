@@ -1,210 +1,263 @@
 # Contributing to Claude Code Auto Workflows
 
-Thank you for your interest in contributing to this project! This repository demonstrates automated workflows using Claude Code for GitHub Actions.
+Thank you for your interest in contributing to this project! This document provides guidelines and information for contributors.
 
 ## Table of Contents
 
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
-- [Contributing Guidelines](#contributing-guidelines)
+- [Code Quality Standards](#code-quality-standards)
 - [Testing](#testing)
-- [Documentation](#documentation)
 - [Pull Request Process](#pull-request-process)
+- [Issue Reporting](#issue-reporting)
 - [Code of Conduct](#code-of-conduct)
 
 ## Getting Started
 
-This repository contains automated workflows that integrate Claude Code with GitHub Actions for:
-
-- Automatic issue processing and resolution
-- Pull request creation and management
-- Code review automation
-- CI/CD pipeline management
-
 ### Prerequisites
 
-- GitHub account with appropriate repository permissions
-- Understanding of GitHub Actions and YAML syntax
-- Familiarity with markdown documentation
+- GitHub account
+- Basic understanding of GitHub Actions and YAML
+- Claude Code CLI (for testing Claude interactions)
+- Git command line tools
+
+### Development Environment
+
+This project consists primarily of:
+- GitHub Actions workflows (`.github/workflows/`)
+- Markdown documentation
+- Configuration files for various tools
+
+No complex build process or runtime environment is required.
 
 ## Development Setup
 
-### Local Development
-
-1. Fork and clone the repository:
+1. **Fork the repository**
    ```bash
-   git clone https://github.com/azumag/cca-auto-workflows.git
+   gh repo fork azumag/cca-auto-workflows
+   ```
+
+2. **Clone your fork**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/cca-auto-workflows.git
    cd cca-auto-workflows
    ```
 
-2. Create a new branch for your feature:
+3. **Install development dependencies** (optional)
+   ```bash
+   npm install -g markdownlint-cli
+   npm install -g markdown-link-check
+   pip install yamllint
+   ```
+
+4. **Create a feature branch**
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
+## Code Quality Standards
+
+### YAML Workflows
+
+- Use 2-space indentation
+- Follow GitHub Actions best practices
+- Include descriptive names for all jobs and steps
+- Use `continue-on-error: true` for non-critical steps
+- Add proper permissions declarations
+- Include timeout settings for long-running jobs
+
+**Example:**
+```yaml
+name: Example Workflow
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  example:
+    name: Example Job
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+```
+
+### Markdown Documentation
+
+- Follow the existing markdownlint configuration
+- Use ATX-style headers (`#` instead of `===`)
+- Keep line length under 120 characters
+- Include table of contents for long documents
+- Use relative links for internal references
+
 ### Configuration Files
 
-The repository uses several configuration files:
-
-- `.markdownlint.json` - Markdown linting rules
-- `.markdown-link-check.json` - Link validation configuration
-- `.yamllint.yml` - YAML validation rules
-- `CLAUDE.md` - Claude Code specific instructions
-
-### Workflow Structure
-
-The `.github/workflows/` directory contains:
-
-- `ci.yml` - Comprehensive CI pipeline with validation, security scanning, and performance analysis
-- `claude.yml` - Claude Code integration workflow
-- `daily-issue.yml` - Automatic issue creation
-- Other automation workflows for issue processing and PR management
-
-## Contributing Guidelines
-
-### Code Quality Standards
-
-1. **Markdown Documentation**:
-   - Follow the rules defined in `.markdownlint.json`
-   - Ensure all links are valid and accessible
-   - Use consistent heading structure
-
-2. **YAML Files**:
-   - Follow YAML best practices
-   - Use consistent indentation (2 spaces)
-   - Validate syntax before committing
-
-3. **GitHub Actions**:
-   - Use semantic and descriptive job/step names
-   - Include appropriate error handling
-   - Follow security best practices for secrets and permissions
-
-### Security Considerations
-
-- Never commit secrets, tokens, or sensitive information
-- Use GitHub secrets for sensitive data
-- Validate external inputs in workflows
-- Follow principle of least privilege for GitHub App permissions
-
-### Documentation Requirements
-
-- Update README.md if adding new functionality
-- Document any new configuration options
-- Include examples for new workflows
-- Follow the repository's documentation style
+- Validate JSON files before committing
+- Use consistent formatting and indentation
+- Include comments where helpful
+- Follow the established patterns in existing config files
 
 ## Testing
 
 ### Local Validation
 
-Before submitting changes, run these validations locally:
+Before submitting a pull request, run these checks:
 
 ```bash
-# Markdown linting
-markdownlint "**/*.md" --config .markdownlint.json
-
-# Link checking
-find . -name "*.md" | xargs markdown-link-check --config .markdown-link-check.json
-
-# YAML validation
+# Validate YAML files
 yamllint .github/workflows/
 
-# JSON validation
-python3 -m json.tool .markdownlint.json
-python3 -m json.tool .markdown-link-check.json
+# Check markdown formatting
+markdownlint .
+
+# Validate JSON files
+for file in *.json; do python -m json.tool "$file" > /dev/null; done
+
+# Check markdown links
+find . -name "*.md" -exec markdown-link-check {} \;
 ```
 
-### CI Pipeline
+### Workflow Testing
 
-The CI pipeline automatically runs:
-
-- **Validation & Linting**: Markdown, YAML, and JSON validation
-- **Security Scan**: Trivy vulnerability scanner
-- **Workflow Validation**: Structure and secrets validation
-- **Performance Analysis**: Repository structure analysis
-
-All checks must pass before merging.
+- Test workflow changes in your fork before submitting
+- Ensure workflows don't fail due to missing secrets or permissions
+- Use `continue-on-error: true` for steps that might fail in forks
+- Document any required secrets or setup steps
 
 ## Pull Request Process
 
-1. **Create Feature Branch**: Use descriptive branch names
-2. **Make Changes**: Follow coding standards and guidelines
-3. **Test Locally**: Run validation tools
-4. **Commit Changes**: Use clear, descriptive commit messages
-5. **Create Pull Request**: Include detailed description of changes
-6. **Address Review Comments**: Collaborate on improvements
-7. **Ensure CI Passes**: All automated checks must succeed
+### Before Submitting
+
+1. **Test your changes thoroughly**
+   - Run local validation scripts
+   - Test workflows in your fork if applicable
+   - Verify documentation is accurate and up-to-date
+
+2. **Follow commit conventions**
+   ```bash
+   # Examples of good commit messages
+   git commit -m "feat: add new workflow for dependency updates"
+   git commit -m "fix: resolve issue with label processing"
+   git commit -m "docs: update contributing guidelines"
+   git commit -m "ci: improve error handling in validation jobs"
+   ```
+
+3. **Update documentation**
+   - Update README.md if adding new features
+   - Document any new configuration requirements
+   - Include examples for new workflows or features
 
 ### Pull Request Template
 
-Include the following in your PR description:
-
 ```markdown
-## Description
-Brief description of changes made
+## Summary
+Brief description of what this PR does.
 
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Documentation update
-- [ ] Configuration change
-- [ ] Workflow improvement
+## Changes Made
+- List of specific changes
+- Include configuration updates
+- Note any breaking changes
 
 ## Testing
-- [ ] Local validation completed
-- [ ] CI pipeline passes
-- [ ] Manual testing performed (if applicable)
+- [ ] Local validation passes
+- [ ] Workflows tested in fork (if applicable)
+- [ ] Documentation updated
+- [ ] Examples provided
 
-## Checklist
-- [ ] Code follows project style guidelines
-- [ ] Documentation updated (if applicable)
-- [ ] No sensitive information committed
-- [ ] Related issues referenced
+## Related Issues
+Closes #issue_number (if applicable)
 ```
 
-## Workflow Permissions
+### Review Process
 
-This repository uses GitHub Apps with specific permissions:
+1. All PRs require review before merging
+2. Automated CI checks must pass
+3. Documentation should be clear and complete
+4. Changes should follow established patterns
 
-### Required Permissions
-- `contents: write` - For repository content access
-- `issues: write` - For issue management
-- `pull-requests: write` - For PR creation and management
-- `metadata: read` - For repository metadata
+## Issue Reporting
 
-### Permission Limitations
-- Workflow files (`.github/workflows/`) require special `workflows` permission
-- Some operations may require Personal Access Token (PAT) instead of GitHub App
+### Bug Reports
 
-## Troubleshooting
+When reporting bugs, please include:
 
-### Common Issues
+- **Description**: Clear description of the problem
+- **Steps to reproduce**: Detailed steps to reproduce the issue
+- **Expected behavior**: What you expected to happen
+- **Actual behavior**: What actually happened
+- **Environment**: Relevant details about your setup
+- **Logs**: Any relevant error messages or logs
 
-1. **Workflow Permission Errors**:
-   - Check GitHub App permissions
-   - Consider using PAT for workflow modifications
+### Feature Requests
 
-2. **CI Failures**:
-   - Run local validation first
-   - Check workflow syntax
-   - Verify configuration files
+For feature requests, please include:
 
-3. **Link Check Failures**:
-   - Update `.markdown-link-check.json` ignore patterns
-   - Check for broken external links
+- **Use case**: Why this feature would be useful
+- **Proposed solution**: How you think it should work
+- **Alternatives**: Other solutions you've considered
+- **Additional context**: Any other relevant information
+
+### Labels
+
+We use the following labels to categorize issues:
+
+- `bug`: Something isn't working correctly
+- `enhancement`: New feature or improvement
+- `documentation`: Documentation improvements
+- `question`: Questions about usage or functionality
+- `good first issue`: Good for new contributors
+
+## Code of Conduct
+
+### Our Standards
+
+- **Be respectful**: Treat all contributors with respect
+- **Be collaborative**: Work together towards common goals
+- **Be inclusive**: Welcome contributors from all backgrounds
+- **Be constructive**: Provide helpful feedback and suggestions
+
+### Unacceptable Behavior
+
+- Harassment or discrimination of any kind
+- Trolling, insulting, or derogatory comments
+- Publishing private information without consent
+- Any conduct that would be inappropriate in a professional setting
+
+### Reporting Issues
+
+If you experience or witness unacceptable behavior, please report it by:
+- Opening a GitHub issue
+- Contacting the project maintainers directly
 
 ## Recognition
 
-Contributors will be recognized in:
-- Pull request acknowledgments
-- Release notes (for significant contributions)
-- Repository contributor listings
+Contributors will be recognized in several ways:
 
-## Support
+- Listed in the project's contributor list
+- Mentioned in release notes for significant contributions
+- GitHub's built-in contribution tracking
 
-For questions or support:
-- Create an issue in the repository
-- Reference relevant documentation
-- Follow existing patterns and examples
+## Questions and Support
 
-Thank you for contributing to the improvement of automated workflows with Claude Code!
+If you have questions about contributing:
+
+1. Check the existing documentation
+2. Search existing issues for similar questions
+3. Open a new issue with the `question` label
+4. Join project discussions if available
+
+## Additional Resources
+
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [Claude Code Documentation](https://docs.anthropic.com/en/docs/claude-code)
+- [YAML Specification](https://yaml.org/spec/)
+- [Markdown Guide](https://www.markdownguide.org/)
+
+Thank you for contributing to Claude Code Auto Workflows! 🚀
