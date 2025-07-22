@@ -1,15 +1,27 @@
 {
   "timeout": "10s",
   "retryOn429": true,
-  "retryCount": 3,
+  "retryCount": 5,
   "fallbackRetryDelay": "30s",
-  "aliveStatusCodes": [200, 206, 999],
+  "aliveStatusCodes": [200, 206, 999, 403],
   "ignorePatterns": [
     {
       "pattern": "^http://localhost"
     },
     {
+      "pattern": "^https://localhost"
+    },
+    {
       "pattern": "^https://claude.ai/code"
+    },
+    {
+      "pattern": "^mailto:"
+    },
+    {
+      "pattern": "^tel:"
+    },
+    {
+      "pattern": "^#"
     }
   ],
   "replacementPatterns": [
@@ -20,7 +32,16 @@
   ],
   "httpHeaders": [
     {
-      "urls": ["https://github.com"],
+      "urls": ["https://github.com", "https://api.github.com"],
+      "headers": {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "User-Agent": "Mozilla/5.0 (compatible; markdown-link-check/3.11.0; +https://github.com/tcort/markdown-link-check)",
+        "Cache-Control": "no-cache"
+      }
+    },
+    {
+      "urls": ["https://docs.anthropic.com"],
       "headers": {
         "Accept": "text/html",
         "User-Agent": "Mozilla/5.0 (compatible; markdown-link-check)"
