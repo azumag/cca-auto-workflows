@@ -5,6 +5,83 @@ All notable changes to the Claude Code Auto Workflows system will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-07-23
+
+### Added
+- **Enhanced Label Creation Script**: Completely rewritten `scripts/create-labels.sh` with advanced features
+  - Command-line options: `--dry-run`, `--force`, `--quiet`, `--help`
+  - Comprehensive error handling and validation
+  - Input validation for label names, colors, and descriptions
+  - Smart duplicate detection and update capabilities
+  - Organized label categories with summary reporting
+  - Improved logging and user feedback
+- **New Utility Scripts**: Complete suite of maintenance and analysis tools
+  - `scripts/check-secrets.sh`: Security vulnerability scanning and secret detection
+  - `scripts/analyze-performance.sh`: Workflow performance analysis and API usage monitoring
+  - `scripts/cleanup-old-runs.sh`: Intelligent cleanup of old workflow runs with configurable retention
+  - `scripts/validate-workflows.sh`: Comprehensive workflow validation for syntax and best practices
+- **Enhanced Package.json Scripts**: Expanded npm scripts for better developer experience
+  - Security scripts: `security:audit`, `security:check-secrets`, `security:audit:fix`
+  - Performance scripts: `performance:analyze`, `repo:status`, `workflows:status`
+  - Maintenance scripts: `maintenance:cleanup`, `maintenance:validate-workflows`
+  - Label management: `labels:create:dry`, `labels:update`
+  - Development tools: `dev:watch`, `workflows:list`
+- **New Development Dependencies**: Added tools for enhanced development workflow
+  - `nodemon`: For watching workflow file changes
+  - `yaml-lint`: For improved YAML validation
+
+### Enhanced
+- **Robust Error Handling**: All utility scripts include comprehensive error handling and validation
+  - Proper exit codes and error reporting
+  - Input validation and sanitization
+  - Graceful fallback behaviors
+  - Detailed error messages with troubleshooting guidance
+- **Comprehensive Documentation**: Significantly expanded README.md troubleshooting section
+  - New "Automated Troubleshooting Tools" section with practical examples
+  - Enhanced security analysis documentation
+  - Improved performance optimization guidance
+  - Updated maintenance procedures with new tools
+  - Step-by-step guides for common tasks
+- **Developer Experience**: Improved tooling and workflow for contributors
+  - File watching capabilities for development
+  - Automated validation and testing
+  - Better feedback and reporting mechanisms
+  - Standardized script interfaces and help text
+
+### Security
+- **Hardcoded Secret Detection**: Advanced pattern matching for potential security issues
+  - Multiple secret pattern detection (API keys, tokens, passwords)
+  - Workflow permission analysis
+  - Security best practice validation
+- **Automated Security Auditing**: Regular dependency and configuration auditing
+  - NPM audit integration
+  - Workflow security validation
+  - Permission and secret usage analysis
+
+### Performance
+- **Intelligent Cleanup**: Smart workflow run management
+  - Configurable retention policies
+  - Batch operations for efficiency
+  - Resource usage optimization
+- **Performance Analytics**: Detailed analysis and monitoring
+  - Workflow runtime analysis
+  - API usage tracking and optimization suggestions
+  - Resource utilization monitoring
+
+### Developer Experience
+- **Comprehensive Tooling**: Complete suite of development and maintenance tools
+  - Dry-run capabilities for safe testing
+  - Detailed help and documentation
+  - Consistent command-line interfaces
+  - Real-time validation and feedback
+
+### Documentation
+- **Expanded Troubleshooting**: Comprehensive troubleshooting guide with new tools
+  - Automated diagnostic procedures
+  - Step-by-step resolution guides
+  - Performance optimization strategies
+  - Security best practices integration
+
 ## [2.0.0] - 2025-07-20
 
 ### Added
