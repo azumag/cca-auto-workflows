@@ -1,6 +1,6 @@
 {
   "name": "cca-auto-workflows",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A comprehensive GitHub Actions workflow system that automates issue processing, code review, and pull request management using Claude Code",
   "private": true,
   "scripts": {
@@ -12,7 +12,19 @@
     "setup": "npm install && npm run validate",
     "test": "npm run validate",
     "labels:create": "scripts/create-labels.sh",
-    "health-check": "gh run list --limit=10 && gh api rate_limit"
+    "labels:create:dry": "scripts/create-labels.sh --dry-run",
+    "labels:update": "scripts/create-labels.sh --force",
+    "health-check": "gh run list --limit=10 && gh api rate_limit",
+    "security:audit": "npm audit --audit-level moderate",
+    "security:audit:fix": "npm audit fix",
+    "security:check-secrets": "scripts/check-secrets.sh",
+    "performance:analyze": "scripts/analyze-performance.sh",
+    "maintenance:cleanup": "scripts/cleanup-old-runs.sh",
+    "maintenance:validate-workflows": "scripts/validate-workflows.sh",
+    "dev:watch": "nodemon --watch .github/workflows/ --ext yml,yaml --ignore 'node_modules/**' --ignore '.git/**' --exec 'npm run lint:yaml'",
+    "repo:status": "gh repo view --json permissions,security && gh api rate_limit",
+    "workflows:list": "gh workflow list",
+    "workflows:status": "gh run list --limit=20 --json status,conclusion,name --jq 'group_by(.status) | map({status: .[0].status, count: length}) | sort_by(.count) | reverse'"
   },
   "repository": {
     "type": "git",
@@ -36,7 +48,9 @@
   "homepage": "https://github.com/azumag/cca-auto-workflows#readme",
   "devDependencies": {
     "markdownlint-cli": "^0.39.0",
-    "markdown-link-check": "^3.12.1"
+    "markdown-link-check": "^3.12.1",
+    "nodemon": "^3.0.2",
+    "yaml-lint": "^1.7.0"
   },
   "engines": {
     "node": ">=18.0.0",

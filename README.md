@@ -486,6 +486,73 @@ gh secret set ACTIONS_STEP_DEBUG --body "true"
 gh secret set ACTIONS_RUNNER_DEBUG --body "true"
 ```
 
+### Automated Troubleshooting Tools
+
+The repository includes several utility scripts to help diagnose and resolve common issues:
+
+#### Security Analysis
+```bash
+# Run comprehensive security check
+npm run security:check-secrets
+
+# Audit npm dependencies
+npm run security:audit
+
+# Fix npm security vulnerabilities
+npm run security:audit:fix
+```
+
+#### Performance Analysis
+```bash
+# Analyze workflow performance and API usage
+npm run performance:analyze
+
+# Get detailed repository status
+npm run repo:status
+
+# Check workflow status distribution
+npm run workflows:status
+```
+
+#### Maintenance Tools
+```bash
+# Validate all workflow files
+npm run maintenance:validate-workflows
+
+# Clean up old workflow runs (dry run first)
+npm run maintenance:cleanup --dry-run
+
+# Actually perform cleanup (keep last 30 days, max 100 runs per workflow)
+npm run maintenance:cleanup
+
+# Custom cleanup (keep last 7 days, max 50 runs per workflow)
+scripts/cleanup-old-runs.sh --days 7 --max-runs 50 --force
+```
+
+#### Label Management
+```bash
+# Preview label creation/updates
+npm run labels:create:dry
+
+# Create all required labels
+npm run labels:create
+
+# Force update existing labels with new colors/descriptions
+npm run labels:update
+```
+
+#### Development Tools
+```bash
+# Watch for workflow file changes and validate
+npm run dev:watch
+
+# List all workflows
+npm run workflows:list
+
+# Comprehensive system health check
+npm run health-check
+```
+
 ### Performance Optimization Tips
 
 #### Workflow Efficiency
@@ -493,11 +560,20 @@ gh secret set ACTIONS_RUNNER_DEBUG --body "true"
 - Implement conditional job execution based on file changes
 - Use matrix strategies for parallel testing
 - Monitor workflow execution times with the health check system
+- **Use the performance analyzer**: Run `npm run performance:analyze` to get detailed insights
 
 #### Resource Management
-- Regular cleanup of old workflow runs: `gh run list --status=completed --limit=100 | xargs -I {} gh run delete {}`
+- **Automated cleanup**: Use `npm run maintenance:cleanup` instead of manual deletion
+- **Smart cleanup options**: Configure retention policies with `scripts/cleanup-old-runs.sh --days X --max-runs Y`
 - Archive logs older than 90 days
 - Monitor secret usage and rotate regularly
+- **Regular validation**: Run `npm run maintenance:validate-workflows` to catch issues early
+
+#### API Usage Optimization
+- Monitor API rate limits with `npm run repo:status`
+- Use the performance analyzer to identify high API usage workflows
+- Consider implementing request caching in frequently triggered workflows
+- Review workflow trigger frequency and optimize where possible
 
 ### Security Best Practices
 
@@ -513,11 +589,27 @@ gh secret list
 gh repo view --json securityAndAnalysis
 ```
 
+#### Automated Security Checks
+```bash
+# Run comprehensive security analysis
+npm run security:check-secrets
+
+# Regular dependency audits
+npm run security:audit
+
+# Fix known vulnerabilities
+npm run security:audit:fix
+
+# Validate workflow security practices
+npm run maintenance:validate-workflows
+```
+
 #### Monitoring
-- Enable security scanning in CI pipeline (automatic)
-- Regular dependency audits
-- Monitor for unusual API usage patterns
-- Review workflow permissions quarterly
+- **Automated scanning**: Use `npm run security:check-secrets` in CI/CD pipeline
+- **Regular dependency audits**: Schedule `npm run security:audit` monthly
+- Monitor for unusual API usage patterns with `npm run performance:analyze`
+- Review workflow permissions quarterly using the validation tools
+- Enable GitHub's built-in security features (Dependabot, CodeQL, secret scanning)
 
 ### Recovery Procedures
 
