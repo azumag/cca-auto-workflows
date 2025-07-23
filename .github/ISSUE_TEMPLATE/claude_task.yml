@@ -1,0 +1,106 @@
+name: Claude Code Task
+description: Create a task for Claude Code to automatically process
+title: "[Task]: "
+labels: ["claude", "processing"]
+assignees:
+  - azumag
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for creating tasks that Claude Code can automatically process. The issue will be picked up by the automated workflow system.
+
+  - type: textarea
+    id: task-description
+    attributes:
+      label: Task Description
+      description: Clearly describe what you want Claude Code to implement or fix
+      placeholder: |
+        Example: "Add error handling to the issue-processor workflow to handle GitHub API rate limits"
+        Example: "Implement a new feature to automatically close stale issues after 30 days"
+        Example: "Fix the markdown formatting in the README.md file"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: task-type
+    attributes:
+      label: Task Type
+      description: What type of task is this?
+      options:
+        - Bug Fix
+        - Feature Implementation
+        - Code Refactoring
+        - Documentation Update
+        - Performance Optimization
+        - Security Improvement
+        - Test Addition
+        - Configuration Update
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Expected Complexity
+      description: How complex do you think this task is?
+      options:
+        - Simple - Basic changes, single file
+        - Medium - Multiple files, moderate logic
+        - Complex - Significant changes, multiple components
+        - Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Define what "done" looks like for this task
+      placeholder: |
+        - [ ] Specific requirement 1
+        - [ ] Specific requirement 2
+        - [ ] Tests pass
+        - [ ] Documentation updated
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected-files
+    attributes:
+      label: Files Likely to be Affected
+      description: List files or directories that might need changes (if known)
+      placeholder: |
+        - .github/workflows/issue-processor.yml
+        - README.md
+        - docs/
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any additional information that would help Claude Code understand the task
+      placeholder: |
+        - Links to related issues or PRs
+        - Specific requirements or constraints
+        - Examples of desired behavior
+        - Any relevant documentation
+
+  - type: checkboxes
+    id: requirements
+    attributes:
+      label: Requirements
+      options:
+        - label: This task has clear, actionable requirements
+          required: true
+        - label: I understand this will be processed automatically by Claude Code
+          required: true
+        - label: I have provided sufficient context for implementation
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Note**: This issue will be automatically processed by Claude Code through the automated workflow system. The `processing` label will be added when the task is picked up for implementation.

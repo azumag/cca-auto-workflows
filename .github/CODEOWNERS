@@ -1,0 +1,29 @@
+# CODEOWNERS for Claude Code Auto Workflows
+# This file specifies who should review changes to different parts of the repository
+
+# Global fallback - all files
+* @azumag
+
+# GitHub Actions workflows require special attention
+/.github/workflows/ @azumag
+
+# Security-sensitive files
+/SECURITY.md @azumag
+/.github/dependabot.yml @azumag
+/scripts/ @azumag
+
+# Documentation files should be reviewed for accuracy
+/README.md @azumag
+/CONTRIBUTING.md @azumag
+/CHANGELOG.md @azumag
+/zenn-article.md @azumag
+
+# Configuration files that affect the entire repository
+/.markdownlint.json @azumag
+/.markdown-link-check.json @azumag
+/.editorconfig @azumag
+/.gitignore @azumag
+/package.json @azumag
+
+# Claude-specific configuration
+/CLAUDE.md @azumag

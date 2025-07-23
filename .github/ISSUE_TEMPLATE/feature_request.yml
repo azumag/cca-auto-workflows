@@ -1,0 +1,107 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for the workflow system
+title: "[Feature]: "
+labels: ["enhancement", "claude"]
+assignees:
+  - azumag
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! This helps us improve the Claude Code Auto Workflows system.
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of the feature you'd like to see
+      placeholder: Describe the feature...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What use case does it address?
+      placeholder: Describe the problem or use case...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: How do you think this feature should work?
+      placeholder: Describe your proposed solution...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-category
+    attributes:
+      label: Feature Category
+      description: Which area of the system would this feature affect?
+      options:
+        - Issue Processing
+        - Code Review
+        - CI/CD Integration
+        - Claude Code Integration
+        - Documentation
+        - Security
+        - Performance
+        - Monitoring/Alerting
+        - User Interface
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Low - Nice to have
+        - Medium - Would be helpful
+        - High - Important for my workflow
+        - Critical - Blocking my work
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative solutions or workarounds?
+      placeholder: Describe alternatives...
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or examples about the feature request
+      placeholder: Any additional information...
+
+  - type: checkboxes
+    id: implementation
+    attributes:
+      label: Implementation
+      description: Are you willing to help implement this feature?
+      options:
+        - label: I would like to implement this feature myself
+        - label: I can help with testing once implemented
+        - label: I can provide additional requirements/feedback during development
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched for existing feature requests that might be similar
+          required: true
+        - label: I have provided a clear description of the problem and solution
+          required: true
+        - label: This feature would benefit other users of the system
+          required: true

@@ -1,0 +1,49 @@
+{
+  "name": "cca-auto-workflows",
+  "version": "2.0.0",
+  "description": "A comprehensive GitHub Actions workflow system that automates issue processing, code review, and pull request management using Claude Code",
+  "private": true,
+  "scripts": {
+    "lint": "markdownlint *.md",
+    "lint:fix": "markdownlint *.md --fix",
+    "lint:yaml": "yamllint .github/workflows/",
+    "validate": "npm run lint && npm run lint:yaml && npm run check-links",
+    "check-links": "find . -name '*.md' -not -path './node_modules/*' -exec markdown-link-check {} \\;",
+    "setup": "npm install && npm run validate",
+    "test": "npm run validate",
+    "labels:create": "scripts/create-labels.sh",
+    "health-check": "gh run list --limit=10 && gh api rate_limit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/azumag/cca-auto-workflows.git"
+  },
+  "keywords": [
+    "github-actions",
+    "claude-code",
+    "automation",
+    "ci-cd",
+    "workflow",
+    "issue-management",
+    "code-review",
+    "ai-automation"
+  ],
+  "author": "Tsubasa Azumagakito <azumag@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/azumag/cca-auto-workflows/issues"
+  },
+  "homepage": "https://github.com/azumag/cca-auto-workflows#readme",
+  "devDependencies": {
+    "markdownlint-cli": "^0.39.0",
+    "markdown-link-check": "^3.12.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "volta": {
+    "node": "18.19.0",
+    "npm": "10.2.3"
+  }
+}

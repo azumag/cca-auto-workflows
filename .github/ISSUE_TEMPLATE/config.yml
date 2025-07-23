@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/azumag/cca-auto-workflows/discussions
+    about: Ask questions and discuss the workflow system with the community
+  - name: Claude Code Documentation
+    url: https://docs.anthropic.com/en/docs/claude-code
+    about: Official Claude Code documentation for setup and usage
+  - name: GitHub Actions Documentation
+    url: https://docs.github.com/en/actions
+    about: Official GitHub Actions documentation
+  - name: Security Vulnerability
+    url: https://github.com/azumag/cca-auto-workflows/security/advisories/new
+    about: Please report security vulnerabilities through GitHub Security Advisories
