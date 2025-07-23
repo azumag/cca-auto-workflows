@@ -2,10 +2,9 @@
 #
 # Test helpers for Claude Code Auto Workflows BATS tests
 
-# Load BATS libraries
-load 'bats/lib/bats-support/load'
-load 'bats/lib/bats-assert/load'
-load 'bats/lib/bats-file/load'
+# Load BATS libraries from npm packages
+load "${BATS_LIB_PATH}/bats-support/load"
+load "${BATS_LIB_PATH}/bats-assert/load"
 
 # Test environment setup
 setup_test_environment() {

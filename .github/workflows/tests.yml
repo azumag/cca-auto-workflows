@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install BATS
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bats
+    
+    - name: Install BATS libraries
+      run: |
+        # Install bats-support and bats-assert via npm for consistency
+        npm install --save-dev bats-support bats-assert
+    
+    - name: Run shell syntax checks
+      run: |
+        # Basic syntax validation for all shell scripts
+        find scripts/ -name "*.sh" -exec bash -n {} \;
+    
+    - name: Run BATS tests
+      run: |
+        # Run tests if any .bats files exist
+        if ls tests/*.bats 1> /dev/null 2>&1; then
+          export BATS_LIB_PATH="./node_modules"
+          bats tests/
+        else
+          echo "No BATS test files found"
+        fi
+    
+    - name: Run validation
+      run: npm run validate
