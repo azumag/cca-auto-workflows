@@ -1,0 +1,101 @@
+name: Bug Report
+description: Report a bug or issue with the workflow system
+title: "[Bug]: "
+labels: ["bug", "claude"]
+assignees:
+  - azumag
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! This will help us improve the Claude Code Auto Workflows system.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Describe what you expected...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Please provide detailed steps to reproduce the issue
+      placeholder: |
+        1. Go to...
+        2. Click on...
+        3. See error...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: workflow-affected
+    attributes:
+      label: Which workflow is affected?
+      description: Select the workflow where the issue occurred
+      options:
+        - auto-issue-resolver.yml
+        - issue-processor.yml
+        - claude.yml
+        - ci.yml
+        - ci-result-handler.yml
+        - claude-code-review.yml
+        - claude-review-fix.yml
+        - claude-ci-fix.yml
+        - daily-issue.yml
+        - Other/Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow-logs
+    attributes:
+      label: Workflow Logs
+      description: Please paste relevant workflow logs or error messages
+      placeholder: Paste logs here...
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Details
+      description: Tell us about your environment
+      placeholder: |
+        - Repository: 
+        - GitHub App permissions:
+        - Claude Code version:
+        - Any custom configuration:
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here
+      placeholder: Any additional information...
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched for existing issues that might be related
+          required: true
+        - label: I have included all relevant logs and error messages
+          required: true
+        - label: I have provided clear steps to reproduce the issue
+          required: true
