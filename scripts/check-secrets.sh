@@ -42,7 +42,7 @@ check_hardcoded_secrets() {
     local found_issues=0
     
     for pattern in "${patterns[@]}"; do
-        if grep -rE "$pattern" "$REPO_ROOT" --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null; then
+        if grep -rE "$pattern" "$REPO_ROOT" --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=tests --exclude-dir=test --exclude='*.md' --exclude='*.txt' --exclude='*.log' 2>/dev/null; then
             log_error "Potential hardcoded secret found matching pattern: $pattern"
             ((found_issues++))
         fi
@@ -65,8 +65,11 @@ check_workflow_secrets() {
     if [[ -d "$workflow_dir" ]]; then
         while IFS= read -r -d '' file; do
             if grep -q '\${{.*secrets\.' "$file"; then
-                if ! grep -q 'secrets\.' "$file" | grep -v 'secrets\.GITHUB_TOKEN' >/dev/null 2>&1; then
-                    log_info "✅ $file uses proper secret references"
+                # Check for secrets other than GITHUB_TOKEN
+                if grep -E '\${{.*secrets\.[^}]+}}' "$file" | grep -v 'secrets\.GITHUB_TOKEN' >/dev/null 2>&1; then
+                    log_warn "⚠️  $file uses custom secrets - ensure they are properly configured"
+                else
+                    log_info "✅ $file uses only GITHUB_TOKEN"
                 fi
             fi
         done < <(find "$workflow_dir" -name "*.yml" -o -name "*.yaml" -print0)

@@ -245,13 +245,16 @@ perform_cleanup() {
     log_info "🗑️  Cleaning up excess runs per workflow..."
     while IFS= read -r workflow_name; do
         local runs_to_delete
-        runs_to_delete=$(gh run list --limit 1000 --workflow="$workflow_name" --json databaseId | jq -r "
-            if length > $max_runs then 
-                .[${max_runs}:] | map(.databaseId) | .[]
+        # Use compatible jq syntax that works across versions
+        runs_to_delete=$(gh run list --limit 1000 --workflow="$workflow_name" --json databaseId | jq -r --arg max_runs "$max_runs" '
+            if length > ($max_runs | tonumber) then 
+                . as $all | 
+                ($max_runs | tonumber) as $skip |
+                [range($skip; length)] | map($all[.].databaseId) | .[]
             else 
                 empty 
             end
-        ")
+        ')
         
         if [[ -n "$runs_to_delete" ]]; then
             log_info "   Cleaning up excess runs for: $workflow_name"

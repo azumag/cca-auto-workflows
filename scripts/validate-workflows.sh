@@ -33,6 +33,70 @@ log_header() {
     echo -e "${BLUE}[VALIDATION]${NC} $*"
 }
 
+validate_github_actions_schema() {
+    local file="$1"
+    local errors=0
+    
+    # Check for required GitHub Actions fields
+    if ! yq eval '.name' "$file" >/dev/null 2>&1; then
+        log_warn "Missing 'name' field in: $(basename "$file")"
+        ((errors++))
+    fi
+    
+    if ! yq eval '.on' "$file" >/dev/null 2>&1; then
+        log_error "Missing 'on' field in: $(basename "$file")"
+        ((errors++))
+    fi
+    
+    if ! yq eval '.jobs' "$file" >/dev/null 2>&1; then
+        log_error "Missing 'jobs' field in: $(basename "$file")"
+        ((errors++))
+    fi
+    
+    # Check job structure
+    local job_errors
+    job_errors=$(yq eval '.jobs | keys | .[]' "$file" 2>/dev/null | while read -r job_id; do
+        if ! yq eval ".jobs.$job_id.runs-on" "$file" >/dev/null 2>&1; then
+            echo "Missing 'runs-on' in job '$job_id' in $(basename "$file")"
+        fi
+        if ! yq eval ".jobs.$job_id.steps" "$file" >/dev/null 2>&1; then
+            echo "Missing 'steps' in job '$job_id' in $(basename "$file")"
+        fi
+    done)
+    
+    if [[ -n "$job_errors" ]]; then
+        while IFS= read -r error; do
+            log_error "$error"
+            ((errors++))
+        done <<< "$job_errors"
+    fi
+    
+    return $errors
+}
+
+validate_github_actions_basic() {
+    local file="$1" 
+    local errors=0
+    
+    # Basic structure checks using grep
+    if ! grep -q "^name:" "$file"; then
+        log_warn "Missing 'name' field in: $(basename "$file")"
+        ((errors++))
+    fi
+    
+    if ! grep -q "^on:" "$file"; then
+        log_error "Missing 'on' field in: $(basename "$file")"
+        ((errors++))
+    fi
+    
+    if ! grep -q "^jobs:" "$file"; then
+        log_error "Missing 'jobs' field in: $(basename "$file")"
+        ((errors++))
+    fi
+    
+    return $errors
+}
+
 check_yaml_syntax() {
     log_header "Checking YAML syntax..."
     
@@ -49,16 +113,26 @@ check_yaml_syntax() {
         
         # Check YAML syntax with yq if available
         if command -v yq &> /dev/null; then
-            if ! yq eval '.' "$file" > /dev/null 2>&1; then
+            local yq_output
+            if ! yq_output=$(yq eval '.' "$file" 2>&1); then
                 log_error "YAML syntax error in: $file"
+                log_error "Error details: $yq_output"
                 ((syntax_errors++))
+            else
+                # Additional GitHub Actions schema validation
+                validate_github_actions_schema "$file" || ((syntax_errors++))
             fi
         else
             # Fallback to basic YAML validation with python
             if command -v python3 &> /dev/null; then
-                if ! python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>/dev/null; then
+                local python_output
+                if ! python_output=$(python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>&1); then
                     log_error "YAML syntax error in: $file"
+                    log_error "Error details: $python_output" 
                     ((syntax_errors++))
+                else
+                    # Basic GitHub Actions structure validation
+                    validate_github_actions_basic "$file" || ((syntax_errors++))
                 fi
             else
                 log_warn "No YAML validator available (install yq or python3)"
