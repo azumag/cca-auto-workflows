@@ -235,7 +235,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         
     - name: Install Claude Code
       run: npm install -g @anthropic-ai/claude-code
@@ -431,11 +431,11 @@ strategy:
   matrix:
     include:
       - task: "lint"
-        node-version: "18"
+        node-version: "20"
       - task: "test"
-        node-version: "18"
+        node-version: "20"
       - task: "build"
-        node-version: "18"
+        node-version: "20"
   max-parallel: 3
 ```
 
