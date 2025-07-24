@@ -567,6 +567,275 @@ validate_config() {
 }
 ```
 
+### Configuration Validation Failure Scenarios
+
+The following comprehensive examples demonstrate common validation failures, their causes, and recovery procedures:
+
+#### Numeric Range Validation Failures
+
+**Scenario 1: MAX_PARALLEL_JOBS Out of Range**
+```bash
+# Failure case: Value too high
+export MAX_PARALLEL_JOBS=50
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Invalid MAX_PARALLEL_JOBS: 50 (must be 1-32)
+# Configuration validation failed
+# Exit code: 1
+
+# Root cause: Exceeds maximum allowed parallel jobs
+# Recovery procedure:
+export MAX_PARALLEL_JOBS=8  # Use system-appropriate value
+./scripts/validate-config.sh  # Verify fix
+
+# Prevention strategy:
+# - Use auto-detection: export MAX_PARALLEL_JOBS=$(nproc)
+# - Document valid ranges in configuration files
+# - Implement configuration templates with safe defaults
+```
+
+**Scenario 2: CACHE_TTL Invalid Range**
+```bash
+# Failure case: Value too low
+export CACHE_TTL=30
+CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
+
+# Expected error output:
+# ERROR: Invalid CACHE_TTL: 30 (must be 60-86400 seconds)
+# Configuration validation failed
+
+# Root cause: Cache TTL below minimum threshold
+# Recovery procedure:
+export CACHE_TTL=300  # 5 minutes minimum
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Use environment-specific minimums (dev: 300s, prod: 1800s)
+# - Add validation comments in configuration files
+# - Implement configuration profiles with validated defaults
+```
+
+#### Boolean Value Validation Failures
+
+**Scenario 3: Invalid Boolean Format**
+```bash
+# Failure case: Wrong boolean format
+export ENABLE_CACHE=yes
+export COLORED_OUTPUT=1
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Invalid ENABLE_CACHE: yes (must be true or false)
+# ERROR: Invalid COLORED_OUTPUT: 1 (must be true or false)
+# Configuration validation failed
+
+# Root cause: Non-standard boolean values
+# Recovery procedure:
+export ENABLE_CACHE=true
+export COLORED_OUTPUT=true
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Document boolean format requirements clearly
+# - Use configuration validation in CI/CD pipelines
+# - Provide boolean conversion helper functions
+```
+
+#### Enum Value Validation Failures
+
+**Scenario 4: Invalid LOG_LEVEL**
+```bash
+# Failure case: Invalid log level
+export LOG_LEVEL=VERBOSE
+CONFIG_FILE="config/development.conf" ./scripts/validate-config.sh
+
+# Expected error output:
+# ERROR: Invalid LOG_LEVEL: VERBOSE (must be DEBUG, INFO, WARN, or ERROR)
+# Available options: DEBUG (most verbose), INFO (standard), WARN (warnings only), ERROR (errors only)
+
+# Root cause: Unsupported log level value
+# Recovery procedure:
+export LOG_LEVEL=DEBUG  # Use DEBUG for verbose logging
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Provide enum validation with helpful error messages
+# - List all valid options in error messages
+# - Use configuration templates with valid examples
+```
+
+**Scenario 5: Invalid OUTPUT_FORMAT**
+```bash
+# Failure case: Unsupported output format
+export OUTPUT_FORMAT=xml
+./scripts/analyze-performance.sh --format xml
+
+# Expected error output:
+# ERROR: Invalid OUTPUT_FORMAT: xml (must be console, json, or markdown)
+# Supported formats:
+#   - console: Human-readable output with colors
+#   - json: Structured output for automation
+#   - markdown: Documentation-friendly format
+
+# Recovery procedure:
+export OUTPUT_FORMAT=json  # Use structured format
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Provide format examples in documentation
+# - Implement format auto-detection based on environment
+# - Add format validation early in script execution
+```
+
+#### Configuration Dependency Failures
+
+**Scenario 6: Conflicting Configuration Dependencies**
+```bash
+# Failure case: Benchmark enabled but insufficient iterations
+export ENABLE_BENCHMARKS=true
+export BENCHMARK_ITERATIONS=1
+./scripts/analyze-performance.sh --benchmarks
+
+# Expected error output:
+# ERROR: BENCHMARK_ITERATIONS must be at least 3 when ENABLE_BENCHMARKS is true
+# Current value: 1, minimum required: 3
+# Benchmarking requires multiple iterations for statistical accuracy
+
+# Recovery procedure:
+export BENCHMARK_ITERATIONS=5  # Use recommended value
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Implement dependency validation rules
+# - Provide configuration profiles with validated combinations
+# - Document configuration dependencies clearly
+```
+
+**Scenario 7: Rate Limiting Configuration Conflicts**
+```bash
+# Failure case: Aggressive rate limiting with high delay
+export RATE_LIMIT_REQUESTS_PER_MINUTE=60
+export RATE_LIMIT_DELAY=10
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# WARNING: High request rate (60/min) with high delay (10s) may cause performance issues
+# This configuration allows 60 requests per minute but delays 10 seconds between requests
+# Effective rate will be much lower than configured limit
+
+# Recovery procedure:
+export RATE_LIMIT_DELAY=1  # Use appropriate delay for high rate
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Implement rate limiting calculation validation
+# - Provide rate limiting configuration examples
+# - Add warnings for suboptimal configurations
+```
+
+#### File and Permission Validation Failures
+
+**Scenario 8: Configuration File Access Issues**
+```bash
+# Failure case: Configuration file not readable
+CONFIG_FILE="/etc/cca-workflows/restricted.conf" ./scripts/validate-config.sh
+
+# Expected error output:
+# ERROR: Cannot read configuration file: /etc/cca-workflows/restricted.conf
+# Permission denied (check file permissions and ownership)
+# Current user: developer, File owner: root, Permissions: 600
+
+# Recovery procedure:
+# Option 1: Fix permissions
+sudo chmod 644 /etc/cca-workflows/restricted.conf
+
+# Option 2: Use accessible configuration file
+CONFIG_FILE="config/development.conf" ./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Use consistent file permissions (644 for shared configs)
+# - Document required permissions in deployment guides
+# - Implement permission checking in configuration loading
+```
+
+#### Environment-Specific Validation Failures
+
+**Scenario 9: Production Configuration Missing Required Values**
+```bash
+# Failure case: Production environment with placeholder values
+export ENVIRONMENT=production
+export GITHUB_TOKEN="PLACEHOLDER"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Production environment detected with placeholder values
+# The following variables must be set in production:
+#   - GITHUB_TOKEN: Currently set to 'PLACEHOLDER'
+# Use environment variables or secure configuration management
+
+# Recovery procedure:
+export GITHUB_TOKEN="your-actual-github-token"
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Implement environment-specific validation rules
+# - Use secret management systems in production
+# - Add pre-deployment validation checks
+```
+
+#### Configuration Loading Sequence Failures
+
+**Scenario 10: Configuration Override Precedence Issues**
+```bash
+# Failure case: Environment variable not overriding config file
+echo "MAX_PARALLEL_JOBS=2" > config/test.conf
+export MAX_PARALLEL_JOBS=8
+CONFIG_FILE="config/test.conf" ./scripts/debug-config.sh
+
+# Expected output shows precedence issue:
+# Configuration loaded from: config/test.conf
+# Final MAX_PARALLEL_JOBS value: 2 (expected: 8)
+# Issue: Configuration file loaded after environment variables
+
+# Recovery procedure:
+# Check configuration loading order in load_config() function
+# Ensure environment variables are processed after config files
+
+# Prevention strategy:
+# - Document configuration precedence clearly
+# - Test configuration loading order
+# - Provide configuration debugging tools
+```
+
+### Configuration Validation Recovery Procedures
+
+#### Generic Recovery Steps
+1. **Identify the Specific Error**: Run `./scripts/validate-config.sh` to get detailed error messages
+2. **Check Configuration Precedence**: Use `./scripts/debug-config.sh` to see final values
+3. **Fix the Root Cause**: Address the specific validation failure
+4. **Re-validate**: Run validation again to confirm the fix
+5. **Test Functionality**: Run a basic operation to ensure configuration works
+
+#### Emergency Recovery
+```bash
+# Reset to safe defaults if configuration is completely broken
+unset CONFIG_FILE
+unset MAX_PARALLEL_JOBS CACHE_TTL LOG_LEVEL OUTPUT_FORMAT
+unset ENABLE_CACHE ENABLE_BENCHMARKS COLORED_OUTPUT
+
+# Use default configuration
+./scripts/validate-config.sh
+
+# If defaults work, gradually add custom settings
+export MAX_PARALLEL_JOBS=4
+./scripts/validate-config.sh
+
+export CACHE_TTL=1800  
+./scripts/validate-config.sh
+# Continue adding settings one by one
+```
+
 ### Manual Configuration Validation
 
 ```bash
@@ -578,6 +847,9 @@ CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
 
 # Validate with environment overrides
 MAX_PARALLEL_JOBS=16 CACHE_TTL=300 ./scripts/validate-config.sh
+
+# Debug configuration issues
+./scripts/debug-config.sh
 ```
 
 ### Configuration Test Script

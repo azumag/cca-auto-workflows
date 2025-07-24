@@ -1026,6 +1026,374 @@ EOF
 auto_tune_configuration "$1" "$2"
 ```
 
+## Advanced Configuration Failure Scenarios
+
+Advanced configuration setups introduce complexity that can lead to sophisticated failure modes. This section covers error handling for complex scenarios:
+
+### Version Compatibility Failures
+
+#### Node.js Version Incompatibility
+```bash
+# Failure scenario: Unsupported Node.js version
+node --version
+# v16.20.0 (below required 18.0.0)
+
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Node.js version 16.20.0 is not supported
+# Required: Node.js 18.0.0 or higher
+# Current version lacks required ES2022 features
+
+# Recovery procedure:
+# 1. Install Node.js 18.x or higher
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 2. Verify installation
+node --version  # Should show 18.x.x or higher
+
+# 3. Clear any cached modules
+npm cache clean --force
+rm -rf node_modules package-lock.json
+npm install
+
+# Prevention strategy:
+# - Use .nvmrc file to specify Node.js version
+echo "18.19.0" > .nvmrc
+# - Add version check to CI/CD pipelines
+# - Use Docker containers with pinned Node.js versions
+```
+
+#### GitHub CLI Version Conflicts
+```bash
+# Failure scenario: Legacy GitHub CLI causing API errors
+gh --version
+# gh version 1.14.0 (2021-09-27)
+
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: GitHub CLI version 1.14.0 is not supported
+# Required: gh 2.0.0 or higher for advanced GraphQL features
+# Legacy API endpoints may have rate limiting issues
+
+# Recovery procedure:
+# 1. Remove old version
+sudo apt remove gh
+
+# 2. Install latest version
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install gh
+
+# 3. Re-authenticate
+gh auth login
+
+# Prevention strategy:
+# - Pin GitHub CLI version in Docker containers
+# - Add version checks to setup scripts
+# - Document minimum versions in README
+```
+
+### Dynamic Configuration Failures
+
+#### Adaptive Configuration Calculation Errors
+```bash
+# Failure scenario: System resource detection fails
+export CONFIG_FILE="config/adaptive.conf"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Cannot determine system resources for adaptive configuration
+# CPU detection failed: nproc command not available
+# Memory detection failed: free command not available
+# Falling back to conservative defaults
+
+# Recovery procedure:
+# 1. Install missing system tools
+sudo apt-get install procps util-linux coreutils
+
+# 2. Or provide manual overrides
+export MAX_PARALLEL_JOBS=4
+export CACHE_TTL=1800
+./scripts/analyze-performance.sh
+
+# Prevention strategy:
+# - Test adaptive configuration on target platforms
+# - Provide fallback values for all calculations
+# - Add system tool availability checks
+```
+
+#### Network Latency Detection Failures
+```bash
+# Failure scenario: Network latency check fails
+export CONFIG_FILE="config/adaptive.conf"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# WARNING: Network latency detection failed
+# curl: (6) Could not resolve host: api.github.com
+# Using default rate limiting settings
+# This may result in suboptimal performance
+
+# Recovery procedure:
+# 1. Check network connectivity
+ping api.github.com
+
+# 2. Check DNS resolution
+nslookup api.github.com
+
+# 3. Configure proxy if needed
+export HTTP_PROXY="http://proxy.company.com:8080"
+export HTTPS_PROXY="http://proxy.company.com:8080"
+
+# 4. Or override rate limiting manually
+export RATE_LIMIT_REQUESTS_PER_MINUTE=15
+export RATE_LIMIT_DELAY=4
+
+# Prevention strategy:
+# - Add network connectivity checks
+# - Provide offline configuration modes
+# - Document proxy configuration requirements
+```
+
+### Profile-Based Configuration Failures
+
+#### Profile Loading Errors
+```bash
+# Failure scenario: Invalid profile specification
+export CONFIG_PROFILE=STAGING
+export CONFIG_FILE="config/profiles.conf"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Unknown configuration profile: STAGING
+# Available profiles: DEVELOPMENT, PRODUCTION, CI
+# Check CONFIG_PROFILE environment variable
+
+# Recovery procedure:
+export CONFIG_PROFILE=PRODUCTION
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Add profile validation with helpful error messages
+# - Document available profiles clearly
+# - Provide profile auto-detection based on environment
+```
+
+#### Hierarchical Profile Inheritance Failures
+```bash
+# Failure scenario: Circular profile inheritance
+# In config/hierarchical-profiles.conf:
+# PROFILE_A() { PROFILE_B; }
+# PROFILE_B() { PROFILE_A; }
+
+export CONFIG_PROFILE=A
+export CONFIG_FILE="config/hierarchical-profiles.conf"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Circular profile inheritance detected
+# Profile inheritance chain: A -> B -> A
+# This creates an infinite loop during configuration loading
+
+# Recovery procedure:
+# 1. Fix profile inheritance in configuration file
+# Edit config/hierarchical-profiles.conf to remove circular dependencies
+
+# 2. Test profile loading
+./scripts/validate-config.sh
+
+# Prevention strategy:
+# - Implement inheritance cycle detection
+# - Document profile inheritance patterns
+# - Use profile dependency graphs for complex setups
+```
+
+### Container and Orchestration Failures
+
+#### Container Resource Constraint Failures
+```bash
+# Failure scenario: Container memory limits causing OOM kills
+# docker-compose.yml has: mem_limit: 512m
+# Configuration uses: MAX_PARALLEL_JOBS=16, CACHE_TTL=7200
+
+docker-compose up cca-workflows
+
+# Expected error output:
+# Container killed due to memory limit (exit code 137)
+# Memory usage exceeded 512MB limit
+# Large cache and high parallelism consuming excessive memory
+
+# Recovery procedure:
+# 1. Reduce resource usage
+export MAX_PARALLEL_JOBS=2
+export CACHE_TTL=900
+export ENABLE_BENCHMARKS=false
+
+# 2. Or increase container limits
+# In docker-compose.yml:
+# mem_limit: 2g
+
+# 3. Monitor actual usage
+docker stats cca-workflows
+
+# Prevention strategy:
+# - Use memory-appropriate configuration profiles
+# - Add resource monitoring to containers
+# - Test configurations under resource constraints
+```
+
+#### Kubernetes ConfigMap Update Failures
+```bash
+# Failure scenario: ConfigMap update not propagated to pods
+kubectl apply -f kubernetes/configmap.yaml
+
+# Expected behavior: Pods should pick up new configuration
+# Actual behavior: Pods still using old configuration
+
+# Recovery procedure:
+# 1. Check ConfigMap update
+kubectl get configmap cca-workflows-config -o yaml
+
+# 2. Restart pods to pick up changes
+kubectl rollout restart deployment/cca-workflows
+
+# 3. Verify configuration in running pod
+kubectl exec deployment/cca-workflows -- cat /config/production.conf
+
+# Prevention strategy:
+# - Use rolling updates for configuration changes
+# - Implement configuration reload mechanisms
+# - Add configuration versioning to ConfigMaps
+```
+
+### Performance Optimization Failures
+
+#### Auto-Tuning Algorithm Failures
+```bash
+# Failure scenario: Auto-tuning produces worse performance
+./scripts/auto-tune.sh config/base.conf config/optimized.conf
+
+# Expected: Optimized configuration with better performance
+# Actual: Auto-tuned configuration performs worse than original
+
+# Diagnosis output:
+# Auto-tuning completed!
+# Best performance settings:
+#   MAX_PARALLEL_JOBS: 32 (system only has 4 cores)
+#   CACHE_TTL: 300 (very short, causing frequent API calls)
+#   Execution time: 180s (worse than original 45s)
+
+# Recovery procedure:
+# 1. Revert to known good configuration
+cp config/base.conf config/optimized.conf
+
+# 2. Manual tuning with system awareness
+export MAX_PARALLEL_JOBS=$(nproc)  # 4 cores
+export CACHE_TTL=1800  # 30 minutes
+./scripts/benchmark-performance.sh
+
+# Prevention strategy:
+# - Add sanity checks to auto-tuning algorithms
+# - Use conservative tuning boundaries
+# - Implement performance regression detection
+```
+
+#### Benchmark Inconsistency Issues
+```bash
+# Failure scenario: Benchmark results vary significantly between runs
+./scripts/profile-config.sh config/production.conf 5
+
+# Expected: Consistent timing results
+# Actual: High variance in measurements
+
+# Sample output:
+# Iteration 1/5... Time: 45.234s
+# Iteration 2/5... Time: 78.901s  # Significant variance
+# Iteration 3/5... Time: 43.123s
+# Average execution time: 55.753s (high standard deviation)
+
+# Root causes:
+# - System load fluctuations
+# - Network latency variations
+# - Cache state differences between runs
+
+# Recovery procedure:
+# 1. Run benchmarks under controlled conditions
+export MAX_PARALLEL_JOBS=1  # Reduce system load impact
+./scripts/profile-config.sh config/production.conf 10  # More iterations
+
+# 2. Clear caches between runs
+rm -rf /tmp/github-api-cache/* /tmp/performance-metrics/*
+
+# 3. Use statistical analysis
+./scripts/benchmark-with-statistics.sh config/production.conf
+
+# Prevention strategy:
+# - Implement warmup phases for benchmarks
+# - Use median instead of average for timing
+# - Add confidence intervals to results
+```
+
+### Error Recovery and Fallback Strategies
+
+#### Graceful Degradation Patterns
+```bash
+# Implementation: Fallback configuration loading
+load_config_with_fallback() {
+    local primary_config="$1"
+    local fallback_config="$2"
+    
+    if [[ -f "$primary_config" ]] && validate_config_file "$primary_config"; then
+        source "$primary_config"
+        log_info "Loaded configuration from: $primary_config"
+    elif [[ -f "$fallback_config" ]] && validate_config_file "$fallback_config"; then
+        source "$fallback_config"
+        log_warn "Primary config failed, using fallback: $fallback_config"
+    else
+        log_error "Both primary and fallback configurations failed"
+        use_safe_defaults
+    fi
+}
+
+# Usage example:
+load_config_with_fallback "config/production.conf" "config/safe-defaults.conf"
+```
+
+#### Configuration Rollback Mechanisms
+```bash
+# Implementation: Configuration versioning and rollback
+backup_current_config() {
+    local config_file="$1"
+    local backup_dir="config/backups"
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    
+    mkdir -p "$backup_dir"
+    cp "$config_file" "$backup_dir/$(basename "$config_file").$timestamp"
+    
+    # Keep only last 10 backups
+    ls -t "$backup_dir"/$(basename "$config_file").* | tail -n +11 | xargs rm -f
+}
+
+rollback_config() {
+    local config_file="$1"
+    local backup_dir="config/backups"
+    
+    # Get most recent backup
+    local latest_backup=$(ls -t "$backup_dir"/$(basename "$config_file").* | head -n1)
+    
+    if [[ -f "$latest_backup" ]]; then
+        cp "$latest_backup" "$config_file"
+        log_info "Configuration rolled back to: $latest_backup"
+    else
+        log_error "No backup found for rollback"
+        return 1
+    fi
+}
+```
+
 This advanced configuration guide provides sophisticated configuration management capabilities for expert users and complex deployment scenarios. The patterns and techniques described here enable fine-tuned performance optimization and flexible configuration management across diverse environments.
 
 For foundational configuration topics, see the related documentation:

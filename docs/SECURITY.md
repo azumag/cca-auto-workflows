@@ -646,6 +646,521 @@ load_secret_from_file() {
 GITHUB_TOKEN=$(load_secret_from_file "/etc/secrets/token")
 ```
 
+## Security Failure Scenarios
+
+This section covers comprehensive security failure scenarios, their detection, and recovery procedures:
+
+### Token Authentication Failures
+
+#### GitHub Token Validation Failures
+```bash
+# Failure scenario: Invalid or expired GitHub token
+export GITHUB_TOKEN="ghp_invalid_token_example"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: GitHub token validation failed
+# HTTP 401: Bad credentials
+# Token may be expired, revoked, or malformed
+# Check token format and expiration date
+
+# Recovery procedure:
+# 1. Generate new GitHub token
+gh auth refresh -h github.com -s repo,read:org
+
+# 2. Update token securely
+export GITHUB_TOKEN="ghp_new_valid_token"
+./scripts/validate-config.sh
+
+# 3. Test token access
+curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/rate_limit
+
+# Prevention strategy:
+# - Set up token expiration monitoring
+# - Use GitHub Apps for higher rate limits and better security
+# - Implement token rotation procedures
+# - Add token validation to CI/CD pipelines
+```
+
+#### Token Scope Insufficient Failures
+```bash
+# Failure scenario: GitHub token lacks required permissions
+export GITHUB_TOKEN="ghp_token_with_limited_scope"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Insufficient token permissions
+# HTTP 403: Token doesn't have required scope 'repo'
+# Current scopes: public_repo
+# Required scopes: repo, read:org, actions:read
+
+# Recovery procedure:
+# 1. Create token with required scopes
+# Navigate to GitHub Settings > Developer settings > Personal access tokens
+# Create new token with: repo, read:org, actions:read, metadata:read
+
+# 2. Update configuration
+export GITHUB_TOKEN="ghp_token_with_correct_scopes"
+
+# Prevention strategy:
+# - Document required token scopes clearly
+# - Implement scope validation in scripts
+# - Use fine-grained tokens when possible
+# - Add scope checking to setup documentation
+```
+
+#### Token Exposure in Logs
+```bash
+# Failure scenario: Token accidentally logged in debug output
+export LOG_LEVEL=DEBUG
+export GITHUB_TOKEN="ghp_exposed_token_example"
+./scripts/analyze-performance.sh
+
+# Security risk: Token visible in logs
+# DEBUG: Executing curl -H "Authorization: Bearer ghp_exposed_token_example"
+
+# Immediate containment:
+# 1. Stop all running processes
+pkill -f "analyze-performance"
+
+# 2. Revoke exposed token immediately
+gh auth refresh  # Revoke current token
+# Or manually revoke via GitHub web interface
+
+# 3. Clear logs containing token
+sudo find /var/log -name "*.log" -exec grep -l "ghp_" {} \; | xargs sudo shred -u
+grep -r "ghp_" ~/.local/share/systemd/user/ 2>/dev/null | cut -d: -f1 | xargs rm -f
+
+# 4. Generate new token
+gh auth login --scopes "repo,read:org,actions:read"
+
+# Prevention strategy:
+# - Implement token redaction in all log outputs
+# - Use log sanitization functions
+# - Add token detection to security audits
+# - Review log retention policies
+```
+
+#### Rate Limiting and API Abuse
+```bash
+# Failure scenario: Excessive API usage triggering GitHub security measures
+export RATE_LIMIT_REQUESTS_PER_MINUTE=1000  # Excessive rate
+export RATE_LIMIT_DELAY=0.1  # Too aggressive
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: GitHub API rate limit exceeded (secondary limit)
+# HTTP 403: You have exceeded a secondary rate limit
+# Account temporarily blocked from API access
+# Contact GitHub support for resolution
+
+# Recovery procedure:
+# 1. Immediately reduce API usage
+export RATE_LIMIT_REQUESTS_PER_MINUTE=15
+export RATE_LIMIT_DELAY=4
+
+# 2. Wait for rate limit reset (typically 1 hour for secondary limits)
+echo "Waiting for rate limit reset..."
+sleep 3600
+
+# 3. Contact GitHub support if block persists
+# Provide: account details, use case, and mitigation steps taken
+
+# Prevention strategy:
+# - Implement conservative rate limiting by default
+# - Add secondary rate limit detection
+# - Use exponential backoff for retries
+# - Monitor API usage patterns
+```
+
+### Configuration Security Breaches
+
+#### Unauthorized Configuration Access
+```bash
+# Failure scenario: Configuration files compromised
+# Attacker modifies config/production.conf to exfiltrate data
+
+# Detection indicators:
+# - Unexpected changes to configuration files
+# - File modification timestamps don't match deployment records
+# - Configuration validation fails with unknown values
+
+# Security response:
+# 1. Immediately isolate affected systems
+systemctl stop cca-workflows
+docker stop cca-workflows-container
+
+# 2. Verify configuration integrity
+./scripts/verify-config-integrity.sh
+
+# Expected output for compromised config:
+# ERROR: Configuration integrity check failed
+# File: config/production.conf
+# Expected checksum: a1b2c3d4e5f6...
+# Actual checksum:   x7y8z9w0v1u2...
+# File has been modified outside of normal procedures
+
+# 3. Restore from known good backup
+restore_config_from_backup config/production.conf
+
+# 4. Rotate all sensitive credentials
+./scripts/rotate-all-credentials.sh
+
+# Prevention strategy:
+# - Implement file integrity monitoring
+# - Use immutable configuration in production
+# - Restrict configuration file access
+# - Add configuration change audit logging
+```
+
+#### Secrets Management System Failures
+```bash
+# Failure scenario: AWS Secrets Manager access failure
+export AWS_REGION=us-east-1
+export SECRET_NAME="github-app-token"
+./scripts/analyze-performance.sh
+
+# Expected error output:
+# ERROR: Failed to retrieve secret from AWS Secrets Manager
+# AccessDenied: User: arn:aws:iam::123456789:user/cca-workflows 
+# is not authorized to perform: secretsmanager:GetSecretValue
+# on resource: arn:aws:secretsmanager:us-east-1:123456789:secret:github-app-token
+
+# Recovery procedure:
+# 1. Check IAM permissions
+aws iam list-attached-user-policies --user-name cca-workflows
+
+# 2. Add required permissions
+aws iam attach-user-policy \
+    --user-name cca-workflows \
+    --policy-arn arn:aws:iam::aws:policy/SecretsManagerReadWrite
+
+# 3. Test secret access
+aws secretsmanager get-secret-value --secret-id github-app-token
+
+# 4. Fallback to environment variables temporarily
+export GITHUB_TOKEN="temporary_fallback_token"
+
+# Prevention strategy:
+# - Test secrets access in staging environments
+# - Implement graceful fallback to alternative secret sources
+# - Add IAM permission validation to deployment scripts
+# - Monitor secrets access for anomalies
+```
+
+### Network Security Failures
+
+#### SSL Certificate Validation Bypass
+```bash
+# Failure scenario: SSL verification disabled in production
+export VERIFY_SSL_CERTIFICATES=false
+export GITHUB_API_URL="https://github.enterprise.com/api/v3"
+./scripts/analyze-performance.sh
+
+# Security risk: Man-in-the-middle attacks possible
+# WARNING: SSL certificate verification is disabled
+# This exposes API communications to interception
+# Production environments should never disable SSL verification
+
+# Immediate remediation:
+# 1. Re-enable SSL verification
+export VERIFY_SSL_CERTIFICATES=true
+
+# 2. If custom CA is needed, install it properly
+sudo cp custom-ca.crt /usr/local/share/ca-certificates/
+sudo update-ca-certificates
+
+# 3. Test SSL connectivity
+openssl s_client -connect github.enterprise.com:443 -CAfile /etc/ssl/certs/ca-certificates.crt
+
+# Prevention strategy:
+# - Never allow SSL bypass in production configurations
+# - Implement certificate pinning for critical APIs
+# - Add SSL configuration validation to security audits
+# - Document proper CA certificate installation procedures
+```
+
+#### Proxy Configuration Vulnerabilities
+```bash
+# Failure scenario: Insecure proxy credentials in configuration
+cat config/production.conf
+
+# Security risk: Plaintext proxy credentials
+HTTP_PROXY="http://user:password123@proxy.company.com:8080"
+HTTPS_PROXY="http://user:password123@proxy.company.com:8080"
+
+# Immediate containment:
+# 1. Remove plaintext credentials from configuration
+sed -i 's/user:password123@//g' config/production.conf
+
+# 2. Use secure credential storage
+export PROXY_USERNAME="user"
+export PROXY_PASSWORD="$(aws secretsmanager get-secret-value --secret-id proxy-credentials --query SecretString --output text)"
+
+# 3. Reconstruct proxy URLs securely
+HTTP_PROXY="http://$PROXY_USERNAME:$PROXY_PASSWORD@proxy.company.com:8080"
+
+# Prevention strategy:
+# - Never store proxy credentials in configuration files
+# - Use environment variables or secrets management
+# - Implement credential scanning in CI/CD
+# - Add proxy security to configuration audits
+```
+
+### Container Security Breaches
+
+#### Container Escape Attempts
+```bash
+# Failure scenario: Container running with excessive privileges
+docker run --privileged -v /:/host cca-workflows:latest
+
+# Security risk: Container can access host system
+# ERROR: Container security violation detected
+# Container running with --privileged flag
+# Host filesystem mounted at /host
+# This configuration allows container escape
+
+# Immediate response:
+# 1. Stop insecure container
+docker stop $(docker ps -q --filter ancestor=cca-workflows)
+
+# 2. Run with secure configuration
+docker run \
+    --user 1001:1001 \
+    --read-only \
+    --tmpfs /tmp:size=100M,noexec \
+    --security-opt no-new-privileges:true \
+    --cap-drop ALL \
+    --cap-add NET_CONNECT \
+    cca-workflows:latest
+
+# Prevention strategy:
+# - Implement container security policies
+# - Use security scanning for container images
+# - Add runtime security monitoring
+# - Document secure container configuration
+```
+
+#### Secrets Exposed as Environment Variables
+```bash
+# Failure scenario: Secrets passed as environment variables in container
+docker run -e GITHUB_TOKEN="ghp_sensitive_token" cca-workflows:latest
+
+# Security risk: Secrets visible in process list and container inspect
+docker inspect cca-workflows | grep -i "ghp_"
+
+# Immediate mitigation:
+# 1. Stop container with exposed secrets
+docker stop cca-workflows
+
+# 2. Use secure secret mounting
+docker run \
+    -v /path/to/secrets:/etc/secrets:ro \
+    --tmpfs /tmp \
+    cca-workflows:latest
+
+# 3. Update application to read from mounted files
+GITHUB_TOKEN=$(cat /etc/secrets/github-token)
+
+# Prevention strategy:
+# - Always mount secrets as files, never environment variables
+# - Use Kubernetes secrets for orchestrated environments
+# - Implement secret scanning for container configurations
+# - Add secrets management to security training
+```
+
+### Access Control Failures
+
+#### Privilege Escalation Attempts
+```bash
+# Failure scenario: Service attempting to gain root privileges
+sudo -u cca-workflows ./scripts/analyze-performance.sh
+
+# During execution, script attempts:
+sudo systemctl restart some-service
+
+# Security detection:
+# WARNING: Unauthorized privilege escalation attempt
+# User: cca-workflows
+# Command: sudo systemctl restart some-service
+# This user should not have sudo privileges
+
+# Immediate response:
+# 1. Review and restrict sudo permissions
+sudo visudo
+# Remove any entries for cca-workflows user
+
+# 2. Check for other privilege escalation vectors
+find /usr/local/bin -perm -4000 -user cca-workflows  # Check for setuid files
+ps aux | grep cca-workflows  # Monitor running processes
+
+# 3. Implement least privilege access
+# Create restricted service user
+sudo useradd -r -s /bin/false -M cca-workflows-service
+sudo usermod -L cca-workflows-service  # Lock password
+
+# Prevention strategy:
+# - Use principle of least privilege
+# - Regular access audits
+# - Implement sudo logging and monitoring
+# - Use service accounts with minimal permissions
+```
+
+#### Configuration File Permission Violations
+```bash
+# Failure scenario: Configuration files with world-readable permissions
+ls -la config/production.conf
+# -rw-rw-rw- 1 cca-workflows cca-workflows 2048 Jul 24 10:00 production.conf
+
+# Security risk: Sensitive configuration readable by all users
+# Anyone on the system can read:
+# - GitHub tokens
+# - Database passwords
+# - API keys
+
+# Immediate remediation:
+# 1. Fix file permissions
+chmod 600 config/production.conf
+chown cca-workflows:cca-workflows config/production.conf
+
+# 2. Check for other exposed files
+find config/ -type f -perm /o+r -exec ls -la {} \;
+
+# 3. Audit who may have accessed files
+sudo ausearch -f /path/to/config/production.conf 2>/dev/null
+
+# Prevention strategy:
+# - Set restrictive permissions by default (600 for config files)
+# - Implement file permission monitoring
+# - Add permission checks to deployment scripts
+# - Regular security audits of file permissions
+```
+
+### Incident Response Procedures
+
+#### Token Compromise Response
+```bash
+# Immediate containment procedure for token compromise
+respond_to_token_compromise() {
+    local compromised_token="$1"
+    
+    echo "SECURITY INCIDENT: Token compromise detected"
+    echo "Token: ${compromised_token:0:10}..." # Only log first 10 chars
+    
+    # 1. Immediately revoke token
+    gh auth refresh  # This revokes current token
+    
+    # 2. Stop all processes using the token
+    pkill -f "analyze-performance"
+    pkill -f "github-api"
+    
+    # 3. Clear token from environment and files
+    unset GITHUB_TOKEN
+    sed -i "s/$compromised_token/REVOKED_TOKEN/g" /var/log/cca-workflows/*.log
+    
+    # 4. Generate new token with limited scope
+    gh auth login --scopes "repo,read:org"
+    
+    # 5. Update all services with new token
+    systemctl restart cca-workflows
+    
+    # 6. Audit for potential data exposure
+    audit_potential_data_exposure
+    
+    echo "Token compromise response completed"
+}
+```
+
+#### Configuration Integrity Violation Response
+```bash
+# Response procedure for configuration tampering
+respond_to_config_tampering() {
+    local config_file="$1"
+    
+    echo "SECURITY INCIDENT: Configuration tampering detected"
+    echo "File: $config_file"
+    
+    # 1. Immediately stop all services
+    systemctl stop cca-workflows
+    docker stop cca-workflows-container
+    
+    # 2. Preserve evidence
+    cp "$config_file" "/var/log/security/$(basename "$config_file").$(date +%s).evidence"
+    
+    # 3. Restore from backup
+    restore_config_from_backup "$config_file"
+    
+    # 4. Verify integrity of restored config
+    if verify_config_integrity "$config_file"; then
+        echo "Configuration restored successfully"
+    else
+        echo "CRITICAL: Cannot restore configuration integrity"
+        exit 1
+    fi
+    
+    # 5. Investigate tampering source
+    check_file_access_logs "$config_file"
+    check_system_integrity
+    
+    # 6. Restart services with restored configuration
+    systemctl start cca-workflows
+    
+    echo "Configuration tampering response completed"
+}
+```
+
+#### Security Monitoring and Alerting
+```bash
+# Continuous security monitoring implementation
+monitor_security_events() {
+    while true; do
+        # Monitor for suspicious API activity
+        if check_api_rate_anomalies; then
+            alert_security_team "API_RATE_ANOMALY" "Unusual API usage patterns detected"
+        fi
+        
+        # Monitor configuration file changes
+        if check_config_file_changes; then
+            alert_security_team "CONFIG_CHANGE" "Unauthorized configuration change detected"
+        fi
+        
+        # Monitor for token exposure in logs
+        if check_logs_for_secrets; then
+            alert_security_team "SECRET_EXPOSURE" "Potential secret exposure in logs detected"
+        fi
+        
+        # Monitor container security
+        if check_container_security_violations; then
+            alert_security_team "CONTAINER_SECURITY" "Container security violation detected"
+        fi
+        
+        sleep 60  # Check every minute
+    done
+}
+
+# Security alert function
+alert_security_team() {
+    local event_type="$1"
+    local message="$2"
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    # Log security event
+    echo "$timestamp [SECURITY_ALERT] $event_type: $message" >> /var/log/security/alerts.log
+    
+    # Send to SIEM if configured
+    if [[ -n "$SIEM_ENDPOINT" ]]; then
+        curl -s -X POST "$SIEM_ENDPOINT/alerts" \
+            -H "Content-Type: application/json" \
+            -d "{\"timestamp\":\"$timestamp\",\"type\":\"$event_type\",\"message\":\"$message\",\"severity\":\"HIGH\"}"
+    fi
+    
+    # Email security team if configured
+    if [[ -n "$SECURITY_EMAIL" ]]; then
+        echo "$message" | mail -s "Security Alert: $event_type" "$SECURITY_EMAIL"
+    fi
+}
+```
+
 ## Security Checklist
 
 ### Pre-Deployment Security Checklist
