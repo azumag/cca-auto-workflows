@@ -1121,6 +1121,121 @@ emergency_recovery
 
 This comprehensive troubleshooting guide should help you systematically diagnose and resolve most configuration issues in Claude Code Auto Workflows. 
 
+## Feedback and Time Validation
+
+### Help Improve This Guide! 📝
+
+The time estimates in this troubleshooting guide are based on typical scenarios, but actual troubleshooting times can vary. Your feedback helps improve the accuracy of these estimates for everyone.
+
+#### Quick Feedback Collection
+
+When working through troubleshooting steps, you can contribute timing data using our feedback collection tool:
+
+```bash
+# Start tracking your troubleshooting session
+./scripts/troubleshooting-feedback.sh start <step_id> "Brief description of your issue"
+
+# Work through the troubleshooting steps...
+
+# End the session when done
+./scripts/troubleshooting-feedback.sh end <session_id> success|failure
+```
+
+#### Interactive Mode (Recommended)
+
+For new users, the interactive mode guides you through the feedback process:
+
+```bash
+./scripts/troubleshooting-feedback.sh interactive
+```
+
+This will:
+1. Show available troubleshooting steps
+2. Start timing your session  
+3. Wait for you to complete the troubleshooting
+4. Collect feedback on difficulty and effectiveness
+5. Compare your actual time with estimates
+
+#### Available Step IDs
+
+Common troubleshooting step IDs that correspond to sections in this guide:
+
+| Step ID | Description | Current Estimate |
+|---------|-------------|------------------|
+| `range_fix` | Configuration value range errors | 2-5 minutes |
+| `enum_fix` | Invalid enum/boolean values | 1-3 minutes |
+| `dependency_fix` | Missing dependency errors | 5-10 minutes |
+| `export_fix` | Environment variable export issues | 2-5 minutes |
+| `auth_failure` | GitHub authentication problems | 10-20 minutes |
+| `rate_failure` | API rate limiting issues | 15-30 minutes |
+| `claude_response` | Claude Code not responding | 10-25 minutes |
+| `cache_check` | Cache-related problems | 8-20 minutes |
+
+Use `./scripts/troubleshooting-feedback.sh list-steps` to see all available step IDs.
+
+#### Example Workflow
+
+```bash
+# Starting a troubleshooting session
+$ ./scripts/troubleshooting-feedback.sh start cache_check "Cache files seem corrupted"
+🚀 Started troubleshooting session: troubleshooting_cache_check_1647890123
+   Step: cache_check (estimated: 8-20 minutes)
+   Description: Cache files seem corrupted
+   Use 'end_troubleshooting_session troubleshooting_cache_check_1647890123 [success|failure]' when done
+
+# ... work through the troubleshooting steps in this guide ...
+
+# Ending the session
+$ ./scripts/troubleshooting-feedback.sh end troubleshooting_cache_check_1647890123 success
+✅ Completed troubleshooting session: troubleshooting_cache_check_1647890123
+   Outcome: success
+   Actual time: 12.3 minutes
+   Estimated time: 8-20 minutes
+   🎯 Within estimated time range
+
+📝 Optional: Help improve our time estimates!
+
+How difficult was this troubleshooting step? (1=very easy, 5=very hard) [3]: 2
+Were there any blockers or issues not covered in the documentation? (optional): 
+What resources or tools were most helpful? (optional): The cache cleanup commands in the guide
+Should the time estimate be adjusted? (shorter/longer/accurate) [accurate]: accurate
+✅ Thank you for your feedback! This helps improve our documentation.
+```
+
+#### For Documentation Maintainers
+
+Maintainers can access comprehensive analytics to understand feedback trends and improve estimates:
+
+```bash
+# View analytics dashboard
+./scripts/troubleshooting-analytics.sh dashboard
+
+# Get specific recommendations  
+./scripts/troubleshooting-analytics.sh recommendations
+
+# Export data for analysis
+./scripts/troubleshooting-analytics.sh export json analytics.json
+```
+
+The analytics include:
+- Success/failure rates per troubleshooting step
+- Actual vs estimated time comparisons
+- User difficulty ratings and common blockers
+- Recommendations for updating time estimates
+- Trend analysis over time
+
+#### Privacy and Data Usage
+
+The feedback collection system only stores:
+- Troubleshooting step ID and outcome (success/failure)
+- Actual time taken (not what you worked on)
+- Optional difficulty rating and general feedback
+- No personal information or specific system details
+
+All data is stored locally and used only to improve documentation accuracy.
+
+---
+
 For additional configuration topics, see the related documentation:
 - **[CONFIGURATION.md](CONFIGURATION.md)** - Core configuration options and basic setup
 - **[SECURITY.md](SECURITY.md)** - Comprehensive security practices for configuration management
