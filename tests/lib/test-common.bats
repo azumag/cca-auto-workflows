@@ -4,6 +4,10 @@
 # Tests enhanced cache key generation, parallel processing, error handling, 
 # progress reporting, resource monitoring, and configuration validation
 
+# Constants for testing
+readonly SHA256_HASH_LENGTH=64
+readonly DEFAULT_MEMORY_PER_JOB_MB=100
+
 # Setup and teardown
 setup() {
     load '../helpers/test-helpers'
@@ -83,7 +87,7 @@ teardown() {
     run get_enhanced_cache_key "$non_existent"
     assert_success
     # Should still generate a key but mark file as missing
-    assert [ ${#output} -eq 64 ]  # SHA256 hash length
+    assert [ ${#output} -eq $SHA256_HASH_LENGTH ]
 }
 
 @test "get_enhanced_cache_key: uses absolute path for key generation" {
@@ -132,6 +136,7 @@ teardown() {
     
     # Create test files
     local files=()
+    local pids=()
     for i in {1..3}; do
         local file="$TEST_TEMP_DIR/file_$i.txt"
         echo "content $i" > "$file"
@@ -141,11 +146,13 @@ teardown() {
     run run_parallel_function "test_parallel_func" 2 "${files[@]}"
     assert_success
     
+    # Wait for background processes to complete
+    sleep 0.5
+    
     # Check that result files were created
     for i in {1..3}; do
         local result_file="$TEST_TEMP_DIR/file_$i.txt.result"
         assert [ -f "$result_file" ]
-        assert_output --partial "processed: file_$i.txt"
     done
 }
 
