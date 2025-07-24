@@ -103,7 +103,7 @@ cleanup_and_exit() {
     done
     
     log_info "Cleanup completed, exiting..."
-    exit $exit_code
+    exit "$exit_code"
 }
 
 setup_signal_handling() {
@@ -393,7 +393,7 @@ RESOURCE_MONITOR_PID=0
 get_memory_usage() {
     if command -v free >/dev/null 2>&1; then
         local total_mem used_mem
-        read total_mem used_mem < <(free -m | awk 'NR==2{printf "%d %d", $2, $3}')
+        read -r total_mem used_mem < <(free -m | awk 'NR==2{printf "%d %d", $2, $3}')
         
         if [[ $total_mem -gt 0 ]]; then
             echo $((used_mem * 100 / total_mem))
@@ -545,7 +545,7 @@ calculate_optimal_parallel_jobs() {
         optimal_jobs=$MAX_SYSTEM_PARALLEL_JOBS
     fi
     
-    echo $optimal_jobs
+    echo "$optimal_jobs"
 }
 
 # Adaptive parallel job execution with resource monitoring
