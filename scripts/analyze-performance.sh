@@ -9,16 +9,18 @@ set -euo pipefail
 # Source modular libraries
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/lib/common.sh"
+
+# Load configuration
+load_config "${CONFIG_FILE:-}"
+
+# Setup signal handling
+setup_signal_handling
+
+# Source other modular libraries
 source "$script_dir/lib/github-api.sh"
 source "$script_dir/lib/workflow-analyzer.sh"
 source "$script_dir/lib/performance-metrics.sh"
 source "$script_dir/lib/report-generator.sh"
-
-# Script configuration
-ENABLE_BENCHMARKS="${ENABLE_BENCHMARKS:-false}"
-ENABLE_LOAD_TESTS="${ENABLE_LOAD_TESTS:-false}"
-OUTPUT_FORMAT="${OUTPUT_FORMAT:-console}"  # console, json, markdown
-OUTPUT_FILE="${OUTPUT_FILE:-}"
 
 # Override log_header for this script's specific purpose
 log_header() {
@@ -140,14 +142,15 @@ run_benchmarks() {
     # Benchmark workflow analysis
     run_performance_benchmark "workflow_runtime_analysis" "analyze_workflow_runtime >/dev/null"
     
-    # Benchmark caching operations
+    # Benchmark caching operations - use safe static values
     run_performance_benchmark "cache_operations" "
-        test_key='benchmark_test_$(date +%s)'
+        test_key='benchmark_test_static'
         test_data='sample data for benchmarking'
-        setup_cache '/tmp/benchmark_cache'
-        save_to_cache \"\$test_key\" \"\$test_data\" '/tmp/benchmark_cache'
-        get_from_cache \"\$test_key\" '/tmp/benchmark_cache' 300 >/dev/null
-        rm -rf '/tmp/benchmark_cache'
+        benchmark_cache_dir='/tmp/benchmark_cache_$$'
+        setup_cache \"\$benchmark_cache_dir\"
+        save_to_cache \"\$test_key\" \"\$test_data\" \"\$benchmark_cache_dir\"
+        get_from_cache \"\$test_key\" \"\$benchmark_cache_dir\" 300 >/dev/null
+        rm -rf \"\$benchmark_cache_dir\"
     "
 }
 
@@ -162,13 +165,14 @@ run_load_tests() {
     # Test API rate limiting under load
     run_load_test "api_rate_limit_load" "github_get_rate_limit >/dev/null" 5 20
     
-    # Test cache performance under concurrent access
+    # Test cache performance under concurrent access - use safe values
     run_load_test "cache_concurrent_access" "
-        test_key='load_test_$(date +%s%N)'
+        test_key='load_test_static'
         test_data='load test data'
-        setup_cache '/tmp/load_test_cache' 2>/dev/null || true
-        save_to_cache \"\$test_key\" \"\$test_data\" '/tmp/load_test_cache'
-        get_from_cache \"\$test_key\" '/tmp/load_test_cache' 300 >/dev/null
+        load_cache_dir='/tmp/load_test_cache_$$'
+        setup_cache \"\$load_cache_dir\" 2>/dev/null || true
+        save_to_cache \"\$test_key\" \"\$test_data\" \"\$load_cache_dir\"
+        get_from_cache \"\$test_key\" \"\$load_cache_dir\" 300 >/dev/null
     " 10 50
 }
 
@@ -224,16 +228,54 @@ generate_final_report() {
     esac
 }
 
+# Cleanup function for graceful shutdown
+cleanup_performance_analysis() {
+    log_info "🧹 Cleaning up performance analysis resources..."
+    
+    # Clean up any temporary files including benchmark and load test caches
+    rm -f /tmp/performance_analysis_$$.* 2>/dev/null || true
+    rm -rf /tmp/benchmark_cache_$$ 2>/dev/null || true
+    rm -rf /tmp/load_test_cache_$$ 2>/dev/null || true
+    
+    # Cleanup modules if they exist
+    if declare -F performance_metrics_cleanup > /dev/null; then
+        performance_metrics_cleanup
+    fi
+    
+    if declare -F workflow_analyzer_cleanup > /dev/null; then
+        workflow_analyzer_cleanup
+    fi
+    
+    if declare -F github_api_cleanup > /dev/null; then
+        github_api_cleanup
+    fi
+    
+    if declare -F report_generator_cleanup > /dev/null; then
+        report_generator_cleanup
+    fi
+}
+
 # Cleanup all modules
 cleanup_modules() {
     log_info "🧹 Cleaning up modules..."
     
     start_timer "module_cleanup"
     
-    performance_metrics_cleanup
-    workflow_analyzer_cleanup
-    github_api_cleanup
-    report_generator_cleanup
+    if declare -F performance_metrics_cleanup > /dev/null; then
+        performance_metrics_cleanup
+    fi
+    
+    if declare -F workflow_analyzer_cleanup > /dev/null; then
+        workflow_analyzer_cleanup
+    fi
+    
+    if declare -F github_api_cleanup > /dev/null; then
+        github_api_cleanup
+    fi
+    
+    if declare -F report_generator_cleanup > /dev/null; then
+        report_generator_cleanup
+    fi
     
     end_timer "module_cleanup" "true"
     log_info "✅ Module cleanup completed"
@@ -246,6 +288,9 @@ main() {
     
     log_info "📊 Starting performance analysis for Claude Code Auto Workflows..."
     log_info "🔧 Configuration: benchmarks=$ENABLE_BENCHMARKS, load-tests=$ENABLE_LOAD_TESTS, format=$OUTPUT_FORMAT"
+    
+    # Register cleanup function for graceful shutdown
+    add_cleanup_function cleanup_performance_analysis
     
     # Initialize all modules
     if ! initialize_modules; then

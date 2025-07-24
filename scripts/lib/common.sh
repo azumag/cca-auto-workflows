@@ -3,6 +3,114 @@
 # Common functions for Claude Code Auto Workflows scripts
 # This library provides shared functionality to reduce code duplication
 
+# Configuration loading
+load_config() {
+    local config_file="${1:-}"
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
+    local default_config="$script_dir/config/default.conf"
+    
+    # Load default configuration first
+    if [[ -f "$default_config" ]]; then
+        source "$default_config"
+    fi
+    
+    # Load custom config if specified
+    if [[ -n "$config_file" && -f "$config_file" ]]; then
+        source "$config_file"
+    fi
+    
+    # Validate required configuration
+    validate_config
+}
+
+validate_config() {
+    # Validate numeric values
+    if [[ ! "$MAX_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$MAX_PARALLEL_JOBS" -lt 1 ]]; then
+        log_error "Invalid MAX_PARALLEL_JOBS value: $MAX_PARALLEL_JOBS"
+        return 1
+    fi
+    
+    if [[ ! "$CACHE_TTL" =~ ^[0-9]+$ ]] || [[ "$CACHE_TTL" -lt 60 ]]; then
+        log_error "Invalid CACHE_TTL value: $CACHE_TTL (minimum 60 seconds)"
+        return 1
+    fi
+    
+    # Validate boolean values
+    case "$ENABLE_CACHE" in
+        true|false) ;;
+        *) log_error "Invalid ENABLE_CACHE value: $ENABLE_CACHE (must be true or false)"; return 1 ;;
+    esac
+}
+
+# Signal handling for graceful shutdown
+CLEANUP_FUNCTIONS=()
+INTERRUPTED=false
+
+add_cleanup_function() {
+    CLEANUP_FUNCTIONS+=("$1")
+}
+
+cleanup_and_exit() {
+    local exit_code=${1:-130}
+    INTERRUPTED=true
+    
+    log_warn "Received interrupt signal, cleaning up..."
+    
+    # Run cleanup functions in reverse order
+    for ((i=${#CLEANUP_FUNCTIONS[@]}-1; i>=0; i--)); do
+        local cleanup_func="${CLEANUP_FUNCTIONS[i]}"
+        if declare -F "$cleanup_func" > /dev/null; then
+            log_info "Running cleanup: $cleanup_func"
+            "$cleanup_func" || log_warn "Cleanup function $cleanup_func failed"
+        fi
+    done
+    
+    log_info "Cleanup completed, exiting..."
+    exit $exit_code
+}
+
+setup_signal_handling() {
+    trap 'cleanup_and_exit 130' SIGINT
+    trap 'cleanup_and_exit 143' SIGTERM
+}
+
+# Improved cache key generation with full file paths and content checksums
+get_enhanced_cache_key() {
+    local file="$1"
+    local additional_context="${2:-}"
+    
+    # Input validation to prevent path traversal
+    if [[ -z "$file" ]]; then
+        log_error "get_enhanced_cache_key: file parameter is required"
+        return 1
+    fi
+    
+    # Validate file path doesn't contain dangerous sequences
+    if [[ "$file" =~ \.\./|/\.\. ]]; then
+        log_error "get_enhanced_cache_key: path traversal detected in file: $file"
+        return 1
+    fi
+    
+    # Get absolute path to avoid collisions with same filenames in different directories
+    local abs_path
+    abs_path=$(realpath "$file" 2>/dev/null || echo "$file")
+    
+    # Get file content hash and modification time in one operation
+    local file_info
+    if [[ -f "$file" ]]; then
+        local content_hash mtime
+        content_hash=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)
+        mtime=$(stat -c %Y "$file" 2>/dev/null || echo 0)
+        file_info="${abs_path}:${content_hash}:${mtime}:${additional_context}"
+    else
+        file_info="${abs_path}:missing:0:${additional_context}"
+    fi
+    
+    # Single hash operation instead of double hashing
+    echo -n "$file_info" | sha256sum | cut -d' ' -f1
+}
+
 # Colors for output
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -30,14 +138,22 @@ log_header() {
 # Cache management functions
 setup_cache() {
     local cache_dir="$1"
+    local cache_perms="${2:-700}"
+    
     if [[ -z "$cache_dir" ]]; then
         log_error "Cache directory not specified"
         return 1
     fi
     
-    # Create cache directory with secure permissions
+    # Validate cache directory path
+    if [[ "$cache_dir" =~ \.\./|/\.\. ]]; then
+        log_error "Path traversal detected in cache directory: $cache_dir"
+        return 1
+    fi
+    
+    # Create cache directory with configurable permissions
     mkdir -p "$cache_dir"
-    chmod 700 "$cache_dir"
+    chmod "$cache_perms" "$cache_dir"
 }
 
 get_cache_key() {
@@ -79,14 +195,37 @@ save_to_cache() {
     local cache_key="$1"
     local data="$2"
     local cache_dir="$3"
+    
+    # Input validation
+    if [[ -z "$cache_key" || -z "$cache_dir" ]]; then
+        log_error "save_to_cache: cache_key and cache_dir are required"
+        return 1
+    fi
+    
+    # Validate cache key doesn't contain path traversal
+    if [[ "$cache_key" =~ \.\./|/\.\.|/ ]]; then
+        log_error "save_to_cache: invalid cache key: $cache_key"
+        return 1
+    fi
+    
     local cache_file="$cache_dir/$cache_key"
-    local temp_file="${cache_file}.tmp.$$"
+    local temp_file
+    
+    # Use mktemp for secure temporary file creation
+    temp_file=$(mktemp "${cache_file}.tmp.XXXXXX" 2>/dev/null) || {
+        log_error "save_to_cache: failed to create temporary file for $cache_file"
+        return 1
+    }
     
     # Write to temporary file first, then atomically move
-    echo "$data" > "$temp_file" && mv "$temp_file" "$cache_file"
-    
-    # Clean up temp file if move failed
-    rm -f "$temp_file" 2>/dev/null || true
+    if echo "$data" > "$temp_file" && mv "$temp_file" "$cache_file"; then
+        return 0
+    else
+        # Clean up temp file if operation failed
+        rm -f "$temp_file" 2>/dev/null || true
+        log_error "save_to_cache: failed to save cache for key: $cache_key"
+        return 1
+    fi
 }
 
 cleanup_cache() {
@@ -109,6 +248,37 @@ show_cache_stats() {
             log_info "💾 Using cached ${label:-data} ($cache_files cached entries)"
         fi
     fi
+}
+
+# Simplified parallel processing using xargs -P
+run_parallel_function() {
+    local function_name="$1"
+    local max_jobs="${2:-$XARGS_PARALLEL_JOBS}"
+    local input_files=("${@:3}")
+    
+    # Check if function exists
+    if ! declare -F "$function_name" > /dev/null; then
+        log_error "Function $function_name not found"
+        return 1
+    fi
+    
+    # Export the function so it's available to subshells
+    export -f "$function_name"
+    export -f log_info log_warn log_error log_header
+    export RED YELLOW GREEN BLUE NC
+    
+    # Use printf to handle filenames with spaces properly
+    printf '%s\0' "${input_files[@]}" | xargs -0 -P "$max_jobs" -I {} bash -c "$function_name \"\$1\"" _ {}
+}
+
+# Alternative parallel processing for when function export isn't suitable
+run_parallel_command() {
+    local command_template="$1"
+    local max_jobs="${2:-$XARGS_PARALLEL_JOBS}"
+    local input_files=("${@:3}")
+    
+    # Use printf to handle filenames with spaces properly
+    printf '%s\0' "${input_files[@]}" | xargs -0 -P "$max_jobs" -I {} bash -c "$command_template" _ {}
 }
 
 # Error handling utilities
@@ -137,11 +307,23 @@ wait_for_jobs() {
     return $failed_count
 }
 
-# Progress display
+# Progress display with input validation
 show_progress() {
     local current=$1
     local total=$2
     local operation=$3
+    
+    # Input validation
+    if [[ ! "$current" =~ ^[0-9]+$ ]] || [[ ! "$total" =~ ^[0-9]+$ ]]; then
+        log_error "show_progress: current and total must be numeric"
+        return 1
+    fi
+    
+    if [[ $total -eq 0 ]]; then
+        log_error "show_progress: total cannot be zero"
+        return 1
+    fi
+    
     local percent=$((current * 100 / total))
     local filled=$((percent / 2))
     local empty=$((50 - filled))
