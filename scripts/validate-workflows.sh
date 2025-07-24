@@ -247,16 +247,24 @@ process_validation_result() {
     local output errors warnings
     IFS='|' read -r output errors warnings <<< "$result"
     
-    # Use a lock file to prevent race conditions when updating counters
-    local lock_file="/tmp/validate_workflows_$$.lock"
+    # Use a secure lock file to prevent race conditions when updating counters
+    local lock_file
+    lock_file=$(mktemp "/tmp/validate_workflows_$$.lock.XXXXXX")
     (
         flock -x 200
         echo -e "$output"
         ERRORS=$((ERRORS + errors))
         WARNINGS=$((WARNINGS + warnings))
-        # Store counters in temporary files for the parent process to read
-        echo "$ERRORS" > "/tmp/validate_errors_$$"
-        echo "$WARNINGS" > "/tmp/validate_warnings_$$"
+        # Store counters in secure temporary files for the parent process to read
+        local errors_file warnings_file
+        errors_file=$(mktemp "/tmp/validate_errors_$$.XXXXXX")
+        warnings_file=$(mktemp "/tmp/validate_warnings_$$.XXXXXX")
+        echo "$ERRORS" > "$errors_file"
+        echo "$WARNINGS" > "$warnings_file"
+        # Store file paths for cleanup
+        echo "$errors_file" >> "/tmp/validate_temp_files_$$"
+        echo "$warnings_file" >> "/tmp/validate_temp_files_$$"
+        echo "$lock_file" >> "/tmp/validate_temp_files_$$"
     ) 200>"$lock_file"
 }
 
@@ -285,9 +293,15 @@ parallel_validate_workflows() {
     
     log_info "Processing $total_files workflow files with up to $MAX_PARALLEL_JOBS parallel jobs..."
     
-    # Initialize counter files
-    echo "0" > "/tmp/validate_errors_$$"
-    echo "0" > "/tmp/validate_warnings_$$"
+    # Initialize counter files and temp file tracking
+    local errors_file warnings_file temp_files_list
+    errors_file=$(mktemp "/tmp/validate_errors_$$.XXXXXX")
+    warnings_file=$(mktemp "/tmp/validate_warnings_$$.XXXXXX") 
+    temp_files_list="/tmp/validate_temp_files_$$"
+    echo "0" > "$errors_file"
+    echo "0" > "$warnings_file"
+    echo "$errors_file" > "$temp_files_list"
+    echo "$warnings_file" >> "$temp_files_list"
     
     # Export necessary functions and variables for xargs
     export -f validate_single_file get_validation_cache_key get_validation_from_cache save_validation_to_cache
@@ -299,12 +313,22 @@ parallel_validate_workflows() {
     # Use simplified parallel processing
     printf '%s\0' "${workflow_files[@]}" | xargs -0 -P "$MAX_PARALLEL_JOBS" -I {} bash -c 'process_validation_result "$1"' _ {}
     
-    # Read final counters
-    ERRORS=$(cat "/tmp/validate_errors_$$" 2>/dev/null || echo 0)
-    WARNINGS=$(cat "/tmp/validate_warnings_$$" 2>/dev/null || echo 0)
+    # Read final counters from most recent temp files
+    if [[ -f "$temp_files_list" ]]; then
+        local latest_errors_file latest_warnings_file
+        latest_errors_file=$(grep "validate_errors" "$temp_files_list" | tail -1)
+        latest_warnings_file=$(grep "validate_warnings" "$temp_files_list" | tail -1)
+        ERRORS=$(cat "$latest_errors_file" 2>/dev/null || echo 0)
+        WARNINGS=$(cat "$latest_warnings_file" 2>/dev/null || echo 0)
+    fi
     
-    # Clean up temporary files
-    rm -f "/tmp/validate_errors_$$" "/tmp/validate_warnings_$$" "/tmp/validate_workflows_$$.lock"
+    # Clean up all temporary files
+    if [[ -f "$temp_files_list" ]]; then
+        while IFS= read -r temp_file; do
+            rm -f "$temp_file" 2>/dev/null || true
+        done < "$temp_files_list"
+        rm -f "$temp_files_list" 2>/dev/null || true
+    fi
     
     if [[ $ERRORS -eq 0 && $WARNINGS -eq 0 ]]; then
         log_info "✅ All workflow files passed validation"
@@ -522,8 +546,17 @@ check_dependencies() {
 cleanup_validation() {
     log_info "Cleaning up validation resources..."
     
-    # Clean up temporary files
-    rm -f "/tmp/validate_errors_$$" "/tmp/validate_warnings_$$" "/tmp/validate_workflows_$$.lock" 2>/dev/null || true
+    # Clean up all temporary files created during validation
+    local temp_files_list="/tmp/validate_temp_files_$$"
+    if [[ -f "$temp_files_list" ]]; then
+        while IFS= read -r temp_file; do
+            rm -f "$temp_file" 2>/dev/null || true
+        done < "$temp_files_list"
+        rm -f "$temp_files_list" 2>/dev/null || true
+    fi
+    
+    # Clean up any remaining temp files with our pattern
+    rm -f /tmp/validate_errors_$$.* /tmp/validate_warnings_$$.* /tmp/validate_workflows_$$.lock.* 2>/dev/null || true
     
     # Clean up cache if needed
     if [[ -n "${CACHE_DIR:-}" ]]; then

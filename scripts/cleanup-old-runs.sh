@@ -25,32 +25,37 @@ log_header() {
 }
 
 
-# Rate limiting state
+# Rate limiting state with locking
+RATE_LIMIT_LOCK_FILE="/tmp/cleanup_rate_limit_$$.lock"
 OPERATION_COUNT=0
 LAST_RESET_TIME=$(date +%s)
 
 apply_rate_limit() {
-    ((OPERATION_COUNT++))
-    
-    local current_time
-    current_time=$(date +%s)
-    local time_elapsed=$((current_time - LAST_RESET_TIME))
-    
-    # Reset counter every minute
-    if [[ $time_elapsed -ge 60 ]]; then
-        OPERATION_COUNT=0
-        LAST_RESET_TIME=$current_time
-    fi
-    
-    # Apply rate limiting if we exceed burst size
-    if [[ $OPERATION_COUNT -gt $BURST_SIZE ]]; then
-        local operations_per_second=$((OPERATION_COUNT / (time_elapsed + 1)))
-        local target_ops_per_second=$((RATE_LIMIT_REQUESTS_PER_MINUTE / 60))
+    # Use file locking to prevent race conditions
+    (
+        flock -x 200
+        ((OPERATION_COUNT++))
         
-        if [[ $operations_per_second -gt $target_ops_per_second ]]; then
-            sleep $RATE_LIMIT_DELAY
+        local current_time
+        current_time=$(date +%s)
+        local time_elapsed=$((current_time - LAST_RESET_TIME))
+        
+        # Reset counter every minute
+        if [[ $time_elapsed -ge 60 ]]; then
+            OPERATION_COUNT=0
+            LAST_RESET_TIME=$current_time
         fi
-    fi
+        
+        # Apply rate limiting if we exceed burst size
+        if [[ $OPERATION_COUNT -gt $BURST_SIZE ]]; then
+            local operations_per_second=$((OPERATION_COUNT / (time_elapsed + 1)))
+            local target_ops_per_second=$((RATE_LIMIT_REQUESTS_PER_MINUTE / 60))
+            
+            if [[ $operations_per_second -gt $target_ops_per_second ]]; then
+                sleep $RATE_LIMIT_DELAY
+            fi
+        fi
+    ) 200>"$RATE_LIMIT_LOCK_FILE"
 }
 
 check_api_rate_limit() {
@@ -359,8 +364,9 @@ cleanup_workflow_cleanup() {
     # Reset rate limiting state
     OPERATION_COUNT=0
     
-    # Clean up any temporary files
+    # Clean up any temporary files and locks  
     rm -f /tmp/cleanup_runs_$$.* 2>/dev/null || true
+    rm -f "${RATE_LIMIT_LOCK_FILE}" 2>/dev/null || true
 }
 
 main() {
@@ -383,11 +389,8 @@ main() {
     
     echo
     local total_candidates
-    if ! identify_cleanup_candidates "$keep_days" "$max_runs"; then
-        total_candidates=$?
-    else
-        total_candidates=0
-    fi
+    identify_cleanup_candidates "$keep_days" "$max_runs"
+    total_candidates=$?
     
     if [[ $total_candidates -eq 0 ]]; then
         log_info "🎉 No cleanup needed! Repository is already optimized."

@@ -142,14 +142,15 @@ run_benchmarks() {
     # Benchmark workflow analysis
     run_performance_benchmark "workflow_runtime_analysis" "analyze_workflow_runtime >/dev/null"
     
-    # Benchmark caching operations
+    # Benchmark caching operations - use safe static values
     run_performance_benchmark "cache_operations" "
-        test_key='benchmark_test_$(date +%s)'
+        test_key='benchmark_test_static'
         test_data='sample data for benchmarking'
-        setup_cache '/tmp/benchmark_cache'
-        save_to_cache \"\$test_key\" \"\$test_data\" '/tmp/benchmark_cache'
-        get_from_cache \"\$test_key\" '/tmp/benchmark_cache' 300 >/dev/null
-        rm -rf '/tmp/benchmark_cache'
+        benchmark_cache_dir='/tmp/benchmark_cache_$$'
+        setup_cache \"\$benchmark_cache_dir\"
+        save_to_cache \"\$test_key\" \"\$test_data\" \"\$benchmark_cache_dir\"
+        get_from_cache \"\$test_key\" \"\$benchmark_cache_dir\" 300 >/dev/null
+        rm -rf \"\$benchmark_cache_dir\"
     "
 }
 
@@ -164,13 +165,14 @@ run_load_tests() {
     # Test API rate limiting under load
     run_load_test "api_rate_limit_load" "github_get_rate_limit >/dev/null" 5 20
     
-    # Test cache performance under concurrent access
+    # Test cache performance under concurrent access - use safe values
     run_load_test "cache_concurrent_access" "
-        test_key='load_test_$(date +%s%N)'
+        test_key='load_test_static'
         test_data='load test data'
-        setup_cache '/tmp/load_test_cache' 2>/dev/null || true
-        save_to_cache \"\$test_key\" \"\$test_data\" '/tmp/load_test_cache'
-        get_from_cache \"\$test_key\" '/tmp/load_test_cache' 300 >/dev/null
+        load_cache_dir='/tmp/load_test_cache_$$'
+        setup_cache \"\$load_cache_dir\" 2>/dev/null || true
+        save_to_cache \"\$test_key\" \"\$test_data\" \"\$load_cache_dir\"
+        get_from_cache \"\$test_key\" \"\$load_cache_dir\" 300 >/dev/null
     " 10 50
 }
 
@@ -230,8 +232,10 @@ generate_final_report() {
 cleanup_performance_analysis() {
     log_info "🧹 Cleaning up performance analysis resources..."
     
-    # Clean up any temporary files
+    # Clean up any temporary files including benchmark and load test caches
     rm -f /tmp/performance_analysis_$$.* 2>/dev/null || true
+    rm -rf /tmp/benchmark_cache_$$ 2>/dev/null || true
+    rm -rf /tmp/load_test_cache_$$ 2>/dev/null || true
     
     # Cleanup modules if they exist
     if declare -F performance_metrics_cleanup > /dev/null; then
