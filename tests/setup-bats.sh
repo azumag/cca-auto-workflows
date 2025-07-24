@@ -81,8 +81,13 @@ create_test_helpers() {
     
     mkdir -p "$helpers_dir"
     
-    # Create common test helpers
-    cat > "$helpers_dir/common.bash" << 'EOF'
+    # Ensure helpers directory exists (common.bash already exists in the repo)
+    if [[ ! -f "$helpers_dir/common.bash" ]]; then
+        log_warn "helpers/common.bash not found - it should exist in the repository"
+    fi
+    
+    # Remove the old inline creation - helpers/common.bash exists in repo
+    : << 'REMOVED_EOF'
 #!/bin/bash
 
 # Common test helper functions for Claude Code Auto Workflows
@@ -247,9 +252,9 @@ setup_error_api_mocks() {
 restore_commands() {
     unset -f gh jq yq date
 }
-EOF
+REMOVED_EOF
 
-    log_info "Test helper functions created"
+    log_info "Test helper functions verified"
 }
 
 create_test_config() {
