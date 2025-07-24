@@ -15,6 +15,11 @@ NC='\033[0m' # No Color
 ERRORS=0
 WARNINGS=0
 
+# Performance configuration
+MAX_PARALLEL_JOBS=4  # Number of parallel validation jobs
+CACHE_DIR="${TMPDIR:-/tmp}/validate-workflows-cache"
+CACHE_TTL=1800  # 30 minutes cache TTL
+
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $*"
 }
@@ -31,6 +36,159 @@ log_error() {
 
 log_header() {
     echo -e "${BLUE}[VALIDATION]${NC} $*"
+}
+
+setup_cache() {
+    mkdir -p "$CACHE_DIR"
+}
+
+get_cache_key() {
+    local file="$1"
+    local file_hash
+    file_hash=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)
+    echo "${file_hash}_$(stat -c %Y "$file" 2>/dev/null || echo 0)"
+}
+
+is_cache_valid() {
+    local cache_file="$1"
+    if [[ ! -f "$cache_file" ]]; then
+        return 1
+    fi
+    
+    local cache_time
+    cache_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+    local current_time
+    current_time=$(date +%s)
+    
+    [[ $((current_time - cache_time)) -lt $CACHE_TTL ]]
+}
+
+get_validation_from_cache() {
+    local file="$1"
+    local cache_key
+    cache_key=$(get_cache_key "$file")
+    local cache_file="$CACHE_DIR/$cache_key"
+    
+    if is_cache_valid "$cache_file"; then
+        cat "$cache_file"
+        return 0
+    fi
+    return 1
+}
+
+save_validation_to_cache() {
+    local file="$1"
+    local result="$2"
+    local cache_key
+    cache_key=$(get_cache_key "$file")
+    local cache_file="$CACHE_DIR/$cache_key"
+    
+    echo "$result" > "$cache_file"
+}
+
+cleanup_cache() {
+    if [[ -d "$CACHE_DIR" ]]; then
+        find "$CACHE_DIR" -type f -mmin +$((CACHE_TTL / 60)) -delete 2>/dev/null || true
+    fi
+}
+
+validate_single_file() {
+    local file="$1"
+    local filename
+    filename=$(basename "$file")
+    
+    # Check cache first
+    local cached_result
+    if cached_result=$(get_validation_from_cache "$file"); then
+        echo "$cached_result"
+        return 0
+    fi
+    
+    # Perform validation
+    local validation_output=""
+    local file_errors=0
+    local file_warnings=0
+    
+    # YAML syntax validation
+    validation_output+="Validating: $filename\n"
+    
+    if command -v yq &> /dev/null; then
+        local yq_output
+        if ! yq_output=$(yq eval '.' "$file" 2>&1); then
+            validation_output+="ERROR: YAML syntax error in: $file\n"
+            validation_output+="ERROR: Error details: $yq_output\n"
+            ((file_errors++))
+        else
+            # GitHub Actions schema validation
+            if ! yq eval '.name' "$file" >/dev/null 2>&1; then
+                validation_output+="WARN: Missing 'name' field in: $filename\n"
+                ((file_warnings++))
+            fi
+            
+            if ! yq eval '.on' "$file" >/dev/null 2>&1; then
+                validation_output+="ERROR: Missing 'on' field in: $filename\n"
+                ((file_errors++))
+            fi
+            
+            if ! yq eval '.jobs' "$file" >/dev/null 2>&1; then
+                validation_output+="ERROR: Missing 'jobs' field in: $filename\n"
+                ((file_errors++))
+            fi
+        fi
+    else
+        # Fallback validation
+        if command -v python3 &> /dev/null; then
+            local python_output
+            if ! python_output=$(python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>&1); then
+                validation_output+="ERROR: YAML syntax error in: $file\n"
+                validation_output+="ERROR: Error details: $python_output\n"
+                ((file_errors++))
+            fi
+        fi
+        
+        # Basic structure checks
+        if ! grep -q "^name:" "$file"; then
+            validation_output+="WARN: Missing 'name' field in: $filename\n"
+            ((file_warnings++))
+        fi
+        
+        if ! grep -q "^on:" "$file"; then
+            validation_output+="ERROR: Missing 'on' field in: $filename\n"
+            ((file_errors++))
+        fi
+        
+        if ! grep -q "^jobs:" "$file"; then
+            validation_output+="ERROR: Missing 'jobs' field in: $filename\n"
+            ((file_errors++))
+        fi
+    fi
+    
+    # Security checks
+    if grep -q "@main\|@master\|@latest" "$file"; then
+        validation_output+="WARN: Using unpinned action versions in: $filename (consider using specific versions)\n"
+        ((file_warnings++))
+    fi
+    
+    if ! grep -q "permissions:" "$file"; then
+        validation_output+="WARN: No explicit permissions defined in: $filename\n"
+        ((file_warnings++))
+    fi
+    
+    # Performance checks
+    if grep -q "node_modules\|npm install\|yarn install" "$file"; then
+        if ! grep -q "actions/cache\|cache:" "$file"; then
+            validation_output+="WARN: Consider adding dependency caching in: $filename\n"
+            ((file_warnings++))
+        fi
+    fi
+    
+    # Prepare result
+    local result="$validation_output|$file_errors|$file_warnings"
+    
+    # Cache the result
+    save_validation_to_cache "$file" "$result"
+    
+    echo "$result"
 }
 
 validate_github_actions_schema() {
@@ -95,6 +253,82 @@ validate_github_actions_basic() {
     fi
     
     return $errors
+}
+
+parallel_validate_workflows() {
+    log_header "Validating workflows in parallel..."
+    
+    local workflow_dir=".github/workflows"
+    if [[ ! -d "$workflow_dir" ]]; then
+        log_error "Workflow directory not found: $workflow_dir"
+        return 1
+    fi
+    
+    # Get all workflow files
+    local workflow_files=()
+    while IFS= read -r -d '' file; do
+        workflow_files+=("$file")
+    done < <(find "$workflow_dir" -name "*.yml" -o -name "*.yaml" -print0)
+    
+    local total_files=${#workflow_files[@]}
+    if [[ $total_files -eq 0 ]]; then
+        log_warn "No workflow files found"
+        return 0
+    fi
+    
+    log_info "Processing $total_files workflow files with up to $MAX_PARALLEL_JOBS parallel jobs..."
+    
+    # Process files in parallel batches
+    local batch_size=$MAX_PARALLEL_JOBS
+    local file_index=0
+    
+    while [[ $file_index -lt $total_files ]]; do
+        local pids=()
+        local temp_files=()
+        
+        # Start a batch of parallel validations
+        for ((i=0; i<batch_size && file_index<total_files; i++)); do
+            local file="${workflow_files[$file_index]}"
+            local temp_file
+            temp_file=$(mktemp)
+            temp_files+=("$temp_file")
+            
+            # Run validation in background
+            validate_single_file "$file" > "$temp_file" 2>&1 &
+            pids+=($!)
+            
+            ((file_index++))
+        done
+        
+        # Wait for all jobs in this batch to complete
+        for ((i=0; i<${#pids[@]}; i++)); do
+            wait "${pids[$i]}"
+            
+            # Process results
+            local result
+            result=$(cat "${temp_files[$i]}")
+            local output errors warnings
+            IFS='|' read -r output errors warnings <<< "$result"
+            
+            # Print output and update counters
+            echo -e "$output"
+            ERRORS=$((ERRORS + errors))
+            WARNINGS=$((WARNINGS + warnings))
+            
+            # Clean up temp file
+            rm -f "${temp_files[$i]}"
+        done
+        
+        # Show progress
+        local processed=$((file_index > total_files ? total_files : file_index))
+        log_info "Progress: $processed/$total_files files processed"
+    done
+    
+    if [[ $ERRORS -eq 0 && $WARNINGS -eq 0 ]]; then
+        log_info "✅ All workflow files passed validation"
+    else
+        log_info "📊 Validation completed with $ERRORS errors and $WARNINGS warnings"
+    fi
 }
 
 check_yaml_syntax() {
@@ -323,9 +557,24 @@ generate_summary() {
 
 main() {
     log_info "🔍 Starting workflow validation for Claude Code Auto Workflows..."
+    
+    # Initialize cache and cleanup old entries
+    setup_cache
+    cleanup_cache
+    
+    # Show cache stats
+    if [[ -d "$CACHE_DIR" ]]; then
+        local cache_files
+        cache_files=$(find "$CACHE_DIR" -type f 2>/dev/null | wc -l)
+        if [[ $cache_files -gt 0 ]]; then
+            log_info "💾 Using cached validation results ($cache_files cached files)"
+        fi
+    fi
+    
     echo
     
-    check_yaml_syntax
+    # Use parallel validation instead of sequential
+    parallel_validate_workflows
     echo
     
     check_required_fields

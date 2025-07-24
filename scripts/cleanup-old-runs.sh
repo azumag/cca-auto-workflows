@@ -11,6 +11,11 @@ DEFAULT_MAX_RUNS=100
 DRY_RUN=false
 FORCE=false
 
+# Rate limiting configuration
+RATE_LIMIT_REQUESTS_PER_MINUTE=30
+RATE_LIMIT_DELAY=2  # seconds between operations
+BURST_SIZE=5  # allow burst of operations before applying delay
+
 # Colors for output
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -32,6 +37,69 @@ log_error() {
 
 log_header() {
     echo -e "${BLUE}[CLEANUP]${NC} $*"
+}
+
+show_progress() {
+    local current=$1
+    local total=$2
+    local operation=$3
+    local percent=$((current * 100 / total))
+    local filled=$((percent / 2))
+    local empty=$((50 - filled))
+    
+    printf "\r${BLUE}[PROGRESS]${NC} %s: [" "$operation"
+    printf "%*s" $filled | tr ' ' '█'
+    printf "%*s" $empty | tr ' ' '░'
+    printf "] %d/%d (%d%%)" "$current" "$total" "$percent"
+    
+    if [[ $current -eq $total ]]; then
+        echo
+    fi
+}
+
+# Rate limiting state
+OPERATION_COUNT=0
+LAST_RESET_TIME=$(date +%s)
+
+apply_rate_limit() {
+    ((OPERATION_COUNT++))
+    
+    local current_time
+    current_time=$(date +%s)
+    local time_elapsed=$((current_time - LAST_RESET_TIME))
+    
+    # Reset counter every minute
+    if [[ $time_elapsed -ge 60 ]]; then
+        OPERATION_COUNT=0
+        LAST_RESET_TIME=$current_time
+    fi
+    
+    # Apply rate limiting if we exceed burst size
+    if [[ $OPERATION_COUNT -gt $BURST_SIZE ]]; then
+        local operations_per_second=$((OPERATION_COUNT / (time_elapsed + 1)))
+        local target_ops_per_second=$((RATE_LIMIT_REQUESTS_PER_MINUTE / 60))
+        
+        if [[ $operations_per_second -gt $target_ops_per_second ]]; then
+            sleep $RATE_LIMIT_DELAY
+        fi
+    fi
+}
+
+check_api_rate_limit() {
+    # Check GitHub API rate limit if possible
+    if command -v gh &> /dev/null && gh auth status &> /dev/null; then
+        local rate_limit_info
+        if rate_limit_info=$(gh api rate_limit 2>/dev/null); then
+            local remaining
+            remaining=$(echo "$rate_limit_info" | jq -r '.rate.remaining' 2>/dev/null || echo "unknown")
+            
+            if [[ "$remaining" != "unknown" && "$remaining" -lt 100 ]]; then
+                log_warn "⚠️  Low GitHub API rate limit remaining: $remaining requests"
+                log_warn "   Applying additional rate limiting..."
+                RATE_LIMIT_DELAY=$((RATE_LIMIT_DELAY * 2))
+            fi
+        fi
+    fi
 }
 
 show_help() {
@@ -220,30 +288,60 @@ perform_cleanup() {
     
     log_header "Starting cleanup process..."
     
+    # Check API rate limit before starting
+    check_api_rate_limit
+    
     local deleted_count=0
     local cutoff_date
     cutoff_date=$(date -d "$keep_days days ago" --iso-8601)
     
     # Clean up old runs
     log_info "🗑️  Deleting runs older than $keep_days days..."
-    while IFS= read -r run_id; do
-        if [[ -n "$run_id" ]]; then
-            if gh run delete "$run_id" --yes 2>/dev/null; then
-                ((deleted_count++))
-                log_info "   Deleted run ID: $run_id"
-            else
-                log_warn "   Failed to delete run ID: $run_id"
-            fi
-        fi
-    done < <(gh run list --limit 1000 --json databaseId,createdAt --jq "
+    
+    # First, get all old run IDs to show progress
+    local old_run_ids
+    mapfile -t old_run_ids < <(gh run list --limit 1000 --json databaseId,createdAt --jq "
         map(select(.createdAt < \"$cutoff_date\")) | 
         map(.databaseId) | 
         .[]
     ")
     
+    local total_old_runs=${#old_run_ids[@]}
+    local processed_old_runs=0
+    
+    if [[ $total_old_runs -gt 0 ]]; then
+        for run_id in "${old_run_ids[@]}"; do
+            if [[ -n "$run_id" ]]; then
+                ((processed_old_runs++))
+                show_progress "$processed_old_runs" "$total_old_runs" "Deleting old runs"
+                
+                if gh run delete "$run_id" --yes 2>/dev/null; then
+                    ((deleted_count++))
+                else
+                    log_warn "   Failed to delete run ID: $run_id"
+                fi
+                
+                # Apply rate limiting
+                apply_rate_limit
+            fi
+        done
+    else
+        log_info "   No old runs to delete"
+    fi
+    
     # Clean up excess runs per workflow
     log_info "🗑️  Cleaning up excess runs per workflow..."
-    while IFS= read -r workflow_name; do
+    
+    # Get all workflow names for progress tracking
+    local workflow_names
+    mapfile -t workflow_names < <(gh workflow list --json name --jq '.[].name')
+    local total_workflows=${#workflow_names[@]}
+    local processed_workflows=0
+    
+    for workflow_name in "${workflow_names[@]}"; do
+        ((processed_workflows++))
+        show_progress "$processed_workflows" "$total_workflows" "Processing workflows"
+        
         local runs_to_delete
         # Use compatible jq syntax that works across versions
         runs_to_delete=$(gh run list --limit 1000 --workflow="$workflow_name" --json databaseId | jq -r --arg max_runs "$max_runs" '
@@ -258,18 +356,30 @@ perform_cleanup() {
         
         if [[ -n "$runs_to_delete" ]]; then
             log_info "   Cleaning up excess runs for: $workflow_name"
-            while IFS= read -r run_id; do
+            
+            # Convert to array for progress tracking
+            local run_ids_array
+            mapfile -t run_ids_array <<< "$runs_to_delete"
+            local total_excess_runs=${#run_ids_array[@]}
+            local processed_excess_runs=0
+            
+            for run_id in "${run_ids_array[@]}"; do
                 if [[ -n "$run_id" ]]; then
+                    ((processed_excess_runs++))
+                    show_progress "$processed_excess_runs" "$total_excess_runs" "   Deleting excess runs"
+                    
                     if gh run delete "$run_id" --yes 2>/dev/null; then
                         ((deleted_count++))
-                        log_info "     Deleted run ID: $run_id"
                     else
                         log_warn "     Failed to delete run ID: $run_id"
                     fi
+                    
+                    # Apply rate limiting
+                    apply_rate_limit
                 fi
-            done <<< "$runs_to_delete"
+            done
         fi
-    done < <(gh workflow list --json name --jq '.[].name')
+    done
     
     log_info "✅ Cleanup completed! Deleted $deleted_count workflow runs"
 }
