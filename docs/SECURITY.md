@@ -2,6 +2,19 @@
 
 This guide covers comprehensive security practices for configuration management in Claude Code Auto Workflows.
 
+> ⚠️ **CRITICAL SECURITY WARNING**
+> 
+> Never commit secrets, tokens, or passwords to version control. Always use external secret management systems and validate configurations before deployment.
+
+## 🔒 Security Quick Reference
+
+| Security Area | Critical Requirements | Quick Actions |
+|---|---|---|
+| **Token Management** | Use minimal scopes, rotate regularly, never log tokens | `validate_github_token()`, `monitor_token_usage()` |
+| **File Permissions** | 600 for config files, 400 for production | `chmod 600 config/*.conf` |
+| **SSL Verification** | Always enabled in production | `VERIFY_SSL_CERTIFICATES=true` |
+| **Container Security** | Non-root user, read-only filesystem | `--user 1001:1001 --read-only` |
+
 **Related Documentation:**
 - [CONFIGURATION.md](CONFIGURATION.md) - Core configuration options and basic setup
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Troubleshooting configuration issues
@@ -18,7 +31,17 @@ This guide covers comprehensive security practices for configuration management 
 
 ## Token Management Best Practices
 
+> 📋 **SUMMARY: Token Management Essentials**
+> 
+> - **Use GitHub App tokens** for higher rate limits and better security
+> - **Rotate tokens every 90 days** and document expiration dates
+> - **Apply minimal scopes** - only grant necessary permissions
+> - **Never log tokens** in debug output or configuration files
+> - **Validate tokens** before use with `validate_github_token()`
+
 ### GitHub Token Security
+
+> ⚠️ **WARNING:** GitHub tokens with excessive scopes pose significant security risks. Always use the principle of least privilege.
 
 **GitHub Token Types and Usage:**
 ```bash
@@ -124,7 +147,16 @@ monitor_token_usage() {
 
 ## Secure Configuration Storage Guidelines
 
+> 📋 **SUMMARY: Configuration Storage Essentials**
+> 
+> - **File permissions:** 600 for config files, 400 for production
+> - **Never store secrets** in configuration files - use external secret management
+> - **Encrypt sensitive configs** using GPG or similar encryption
+> - **Validate no placeholders** remain in production environments
+
 ### Configuration File Security
+
+> ⚠️ **CRITICAL:** Configuration files with world-readable permissions expose sensitive data to all system users.
 
 **File Permissions and Ownership:**
 ```bash
@@ -138,6 +170,8 @@ chown root:root config/production.conf  # Root ownership
 ```
 
 ### Secrets Management Integration
+
+> 💡 **BEST PRACTICE:** Use external secret management systems like AWS Secrets Manager, HashiCorp Vault, or Kubernetes secrets for production environments.
 
 **AWS Secrets Manager Integration:**
 ```bash
@@ -230,6 +264,8 @@ fi
 
 ### Environment Variable Security
 
+> ⚠️ **WARNING:** Environment variables can be exposed through process lists. Use `.env` files for local development only and never commit them to version control.
+
 **Secure Environment Variable Handling:**
 ```bash
 # Never commit sensitive values to configuration files
@@ -262,7 +298,16 @@ validate_no_placeholders() {
 
 ## Access Control Considerations
 
+> 📋 **SUMMARY: Access Control Essentials**
+> 
+> - **Dedicated system user** for production deployments
+> - **Restrictive directory permissions** (750 for install, 700 for config)
+> - **Role-based access control** with defined permissions
+> - **Principle of least privilege** for all user accounts
+
 ### User and Group Permissions
+
+> ⚠️ **SECURITY REQUIREMENT:** Never run production services as root. Create dedicated system users with minimal privileges.
 
 **System User Setup for Production:**
 ```bash
@@ -326,7 +371,16 @@ fi
 
 ## Security Validation and Monitoring
 
+> 📋 **SUMMARY: Security Monitoring Essentials**
+> 
+> - **Regular security audits** using automated scripts
+> - **Security event logging** to detect breaches
+> - **Configuration integrity monitoring** with checksums
+> - **Real-time intrusion detection** for configuration files
+
 ### Configuration Security Audit
+
+> 💡 **BEST PRACTICE:** Run security audits regularly and after any configuration changes to maintain security posture.
 
 **Comprehensive Security Audit Script:**
 ```bash
@@ -485,7 +539,16 @@ monitor_config_changes() {
 
 ## Network Security Configuration
 
+> 📋 **SUMMARY: Network Security Essentials**
+> 
+> - **SSL certificate verification** must always be enabled in production
+> - **Custom CA certificates** properly installed when using enterprise GitHub
+> - **Secure proxy configuration** without hardcoded credentials
+> - **Network traffic encryption** for all API communications
+
 ### GitHub Enterprise Server Configuration
+
+> ⚠️ **CRITICAL:** Never disable SSL certificate verification in production environments. This exposes communications to man-in-the-middle attacks.
 
 **Enterprise Security Settings:**
 ```bash
@@ -559,7 +622,16 @@ github_api_call_with_proxy() {
 
 ## Container Security Configuration
 
+> 📋 **SUMMARY: Container Security Essentials**
+> 
+> - **Non-root user** (1001:1001) for all container processes
+> - **Read-only root filesystem** with specific tmpfs mounts
+> - **Dropped capabilities** - remove ALL, add only necessary ones
+> - **Secret mounting as files** instead of environment variables
+
 ### Docker Security Best Practices
+
+> ⚠️ **WARNING:** Running containers with `--privileged` or as root user creates significant security vulnerabilities and potential container escape risks.
 
 **Secure Container Configuration:**
 ```bash
@@ -1161,9 +1233,15 @@ alert_security_team() {
 }
 ```
 
-## Security Checklist
+## 🔍 Security Checklist
+
+> 📋 **SUMMARY: Complete Security Validation**
+> 
+> Use this comprehensive checklist before deploying to production environments. Each item must be verified to ensure security compliance.
 
 ### Pre-Deployment Security Checklist
+
+> ⚠️ **MANDATORY:** All checklist items must be completed before production deployment. Missing security controls create critical vulnerabilities.
 
 - [ ] **Token Security**
   - [ ] GitHub tokens are not hardcoded in configuration files
@@ -1201,6 +1279,15 @@ alert_security_team() {
 
 ### Incident Response
 
+> 🚨 **EMERGENCY PROCEDURES:** In case of security incidents, follow these procedures immediately. Time is critical for minimizing exposure.
+
+| Incident Type | Immediate Action | Recovery Steps |
+|---|---|---|
+| **Token Compromise** | Revoke token immediately | Generate new token, update services, audit exposure |
+| **Config Tampering** | Stop services, preserve evidence | Restore from backup, verify integrity, investigate |
+| **Container Breach** | Stop containers, isolate systems | Review security settings, rebuild with secure config |
+| **SSL Issues** | Re-enable verification | Install proper certificates, test connectivity |
+
 **Security Incident Response Procedures:**
 ```bash
 # In case of suspected token compromise
@@ -1235,9 +1322,26 @@ respond_to_config_tampering() {
 }
 ```
 
+## 🛡️ Security Summary
+
+> ✅ **SECURITY COMPLIANCE VERIFICATION**
+> 
+> Before going to production, ensure you have implemented all critical security measures outlined in this guide.
+
+| Security Priority | Implementation Status | Validation Method |
+|---|---|---|
+| **Token Management** | □ Complete | Run `validate_github_token()` |
+| **File Permissions** | □ Complete | Check with `find config/ -type f -perm /o+r` |
+| **SSL Verification** | □ Complete | Verify `VERIFY_SSL_CERTIFICATES=true` |
+| **Container Security** | □ Complete | Review Docker run parameters |
+| **Access Control** | □ Complete | Audit user permissions and roles |
+| **Monitoring** | □ Complete | Test security event logging |
+
+---
+
 This security configuration guide provides comprehensive protection for Claude Code Auto Workflows. Regular security reviews and updates to these practices are essential for maintaining a secure configuration management system.
 
-For additional configuration topics, see the related documentation:
+**For additional configuration topics, see the related documentation:**
 - **[CONFIGURATION.md](CONFIGURATION.md)** - Core configuration options and basic setup
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Systematic diagnosis and resolution of configuration issues
 - **[ADVANCED.md](ADVANCED.md)** - Advanced configuration patterns and version compatibility
