@@ -3,8 +3,34 @@
 # Test helpers for Claude Code Auto Workflows BATS tests
 
 # Load BATS libraries from npm packages
-load "${BATS_LIB_PATH}/bats-support/load"
-load "${BATS_LIB_PATH}/bats-assert/load"
+# Try to load from the proper npm path
+if [[ -f "../node_modules/bats-support/load.bash" ]]; then
+    load "../node_modules/bats-support/load.bash"
+    load "../node_modules/bats-assert/load.bash"
+elif [[ -f "${BATS_LIB_PATH:-./node_modules}/bats-support/load.bash" ]]; then
+    load "${BATS_LIB_PATH:-./node_modules}/bats-support/load.bash"
+    load "${BATS_LIB_PATH:-./node_modules}/bats-assert/load.bash"
+else
+    # Fallback - use basic assertions
+    assert_success() { [[ "$status" -eq 0 ]]; }
+    assert_failure() { [[ "$status" -ne 0 ]]; }
+    assert_output() { 
+        if [[ "$1" == "--partial" ]]; then
+            [[ "$output" == *"$2"* ]]
+        else
+            [[ "$output" == "$1" ]]
+        fi
+    }
+    refute_output() {
+        if [[ "$1" == "--partial" ]]; then
+            [[ "$output" != *"$2"* ]]
+        else
+            [[ "$output" != "$1" ]]
+        fi
+    }
+    assert_equal() { [[ "$1" == "$2" ]]; }
+    fail() { echo "FAIL: $1" >&2; return 1; }
+fi
 
 # Test environment setup
 setup_test_environment() {
