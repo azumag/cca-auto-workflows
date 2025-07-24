@@ -15,6 +15,59 @@ This comprehensive guide provides detailed instructions for optimizing the perfo
 - [Troubleshooting Performance Issues](#troubleshooting-performance-issues)
 - [Advanced Optimization Techniques](#advanced-optimization-techniques)
 
+## Performance Optimization Flowchart
+
+Use this flowchart to systematically identify and resolve performance issues:
+
+```mermaid
+flowchart TD
+    START([Performance Issue Detected]) --> IDENTIFY{Identify Issue Type}
+    
+    IDENTIFY -->|High API Usage| API_CHECK{Check API Rate Limits}
+    IDENTIFY -->|Slow Execution| EXECUTION_CHECK{Check System Resources}
+    IDENTIFY -->|Memory Issues| MEMORY_CHECK{Check Memory Usage}
+    IDENTIFY -->|Cache Issues| CACHE_CHECK{Check Cache Performance}
+    
+    %% API Usage Path
+    API_CHECK -->|Rate Limited| API_SOLUTIONS[Increase Cache TTL<br/>Use GitHub App Token<br/>Reduce Request Rate]
+    API_CHECK -->|High Usage| API_OPTIMIZE[Enable Request Batching<br/>Optimize API Calls<br/>Implement Intelligent Scheduling]
+    
+    %% Execution Performance Path
+    EXECUTION_CHECK -->|High CPU| CPU_OPTIMIZE[Adjust Parallel Jobs<br/>Optimize Process Affinity<br/>Use Process Priority]
+    EXECUTION_CHECK -->|High I/O Wait| IO_OPTIMIZE[Use Faster Storage<br/>Optimize Cache Location<br/>Clean Temp Files]
+    EXECUTION_CHECK -->|Network Latency| NETWORK_OPTIMIZE[Increase Cache TTL<br/>Use Local Mirror<br/>Batch Network Requests]
+    
+    %% Memory Issues Path
+    MEMORY_CHECK -->|Out of Memory| MEMORY_SOLUTIONS[Reduce Parallel Jobs<br/>Use Streaming Processing<br/>Clean Temp Files]
+    MEMORY_CHECK -->|Memory Leaks| MEMORY_DEBUG[Run Memory Profiling<br/>Check for Resource Leaks<br/>Implement Cleanup Functions]
+    
+    %% Cache Performance Path
+    CACHE_CHECK -->|Low Hit Rate| CACHE_IMPROVE[Optimize Cache Keys<br/>Pre-warm Cache<br/>Adjust Cache Strategy]
+    CACHE_CHECK -->|Cache Corruption| CACHE_FIX[Clear Cache Directory<br/>Fix Atomic Operations<br/>Check Permissions]
+    
+    %% Solution Validation
+    API_SOLUTIONS --> VALIDATE{Test Performance}
+    API_OPTIMIZE --> VALIDATE
+    CPU_OPTIMIZE --> VALIDATE
+    IO_OPTIMIZE --> VALIDATE
+    NETWORK_OPTIMIZE --> VALIDATE
+    MEMORY_SOLUTIONS --> VALIDATE
+    MEMORY_DEBUG --> VALIDATE
+    CACHE_IMPROVE --> VALIDATE
+    CACHE_FIX --> VALIDATE
+    
+    VALIDATE -->|Improved| SUCCESS([Performance Optimized ✅])
+    VALIDATE -->|Still Issues| ADVANCED[Apply Advanced Techniques<br/>Custom Cache Implementation<br/>Auto-tuning Scripts]
+    ADVANCED --> VALIDATE
+    
+    %% Styling
+    style START fill:#e1f5fe
+    style SUCCESS fill:#e8f5e8
+    style IDENTIFY fill:#fff3e0
+    style VALIDATE fill:#f3e5f5
+    style ADVANCED fill:#ffebee
+```
+
 ## Quick Performance Checklist
 
 ### Immediate Optimizations (5 minutes)
@@ -641,6 +694,77 @@ profile_memory() {
 ```
 
 ## Troubleshooting Performance Issues
+
+### Performance Troubleshooting Decision Tree
+
+Use this decision tree to systematically diagnose and resolve performance issues:
+
+```mermaid
+flowchart TD
+    PROBLEM([Performance Issue]) --> SYMPTOMS{What are the symptoms?}
+    
+    SYMPTOMS -->|Errors/Warnings| ERROR_PATH{Check error type}
+    SYMPTOMS -->|Slow Performance| SLOW_PATH{Measure execution time}
+    SYMPTOMS -->|High Resource Usage| RESOURCE_PATH{Check system resources}
+    SYMPTOMS -->|Inconsistent Results| CONSISTENCY_PATH{Check data consistency}
+    
+    %% Error Path
+    ERROR_PATH -->|Rate Limit 429| RATE_LIMIT[Check: gh api rate_limit<br/>Solution: Increase cache TTL<br/>Use GitHub App token]
+    ERROR_PATH -->|Timeout Errors| TIMEOUT[Check: Network latency<br/>Solution: Increase timeouts<br/>Optimize requests]
+    ERROR_PATH -->|Permission Errors| PERMISSION[Check: Token permissions<br/>Solution: Update token scope<br/>Verify repository access]
+    ERROR_PATH -->|Cache Errors| CACHE_ERROR[Check: Cache directory permissions<br/>Solution: Clear cache<br/>Fix atomic operations]
+    
+    %% Performance Path
+    SLOW_PATH -->|>5 minutes| VERY_SLOW{Is analysis limit high?}
+    SLOW_PATH -->|2-5 minutes| MODERATE_SLOW{Check parallel jobs}
+    SLOW_PATH -->|<2 minutes normal| MICRO_OPTIMIZE[Fine-tune cache TTL<br/>Optimize request patterns<br/>Use faster storage]
+    
+    VERY_SLOW -->|Yes| REDUCE_SCOPE[Reduce WORKFLOW_ANALYSIS_LIMIT<br/>Limit to recent runs<br/>Use sampling]
+    VERY_SLOW -->|No| CHECK_BOTTLENECK[Profile with strace<br/>Check API call patterns<br/>Monitor system resources]
+    
+    MODERATE_SLOW -->|Too few jobs| INCREASE_PARALLEL[Increase MAX_PARALLEL_JOBS<br/>Match CPU core count<br/>Test optimal value]
+    MODERATE_SLOW -->|Jobs optimal| CHECK_CACHE_SLOW[Check cache hit rate<br/>Verify cache performance<br/>Optimize cache keys]
+    
+    %% Resource Path
+    RESOURCE_PATH -->|High CPU| CPU_ISSUE[Check: htop, top<br/>Solution: Adjust process priority<br/>Optimize parallel jobs]
+    RESOURCE_PATH -->|High Memory| MEMORY_ISSUE[Check: free -h, ps aux<br/>Solution: Reduce parallel jobs<br/>Use streaming processing]
+    RESOURCE_PATH -->|High Disk I/O| DISK_ISSUE[Check: iostat, iotop<br/>Solution: Use faster storage<br/>Optimize cache location]
+    RESOURCE_PATH -->|High Network| NETWORK_ISSUE[Check: API call frequency<br/>Solution: Batch requests<br/>Increase cache TTL]
+    
+    %% Consistency Path
+    CONSISTENCY_PATH -->|Cache Inconsistency| CACHE_INCONSISTENT[Clear cache directory<br/>Check cache key generation<br/>Verify TTL settings]
+    CONSISTENCY_PATH -->|Data Freshness| DATA_FRESH[Adjust cache TTL<br/>Force cache refresh<br/>Check API rate limits]
+    CONSISTENCY_PATH -->|Parallel Conflicts| PARALLEL_CONFLICT[Check race conditions<br/>Add proper locking<br/>Reduce parallelism]
+    
+    %% Validation Steps
+    RATE_LIMIT --> VALIDATE_FIX{Test fix}
+    TIMEOUT --> VALIDATE_FIX
+    PERMISSION --> VALIDATE_FIX
+    CACHE_ERROR --> VALIDATE_FIX
+    REDUCE_SCOPE --> VALIDATE_FIX
+    CHECK_BOTTLENECK --> VALIDATE_FIX
+    INCREASE_PARALLEL --> VALIDATE_FIX
+    CHECK_CACHE_SLOW --> VALIDATE_FIX
+    MICRO_OPTIMIZE --> VALIDATE_FIX
+    CPU_ISSUE --> VALIDATE_FIX
+    MEMORY_ISSUE --> VALIDATE_FIX
+    DISK_ISSUE --> VALIDATE_FIX
+    NETWORK_ISSUE --> VALIDATE_FIX
+    CACHE_INCONSISTENT --> VALIDATE_FIX
+    DATA_FRESH --> VALIDATE_FIX
+    PARALLEL_CONFLICT --> VALIDATE_FIX
+    
+    VALIDATE_FIX -->|Fixed| SUCCESS([Problem Resolved ✅])
+    VALIDATE_FIX -->|Still Issues| ESCALATE[Run comprehensive benchmark<br/>Create performance profile<br/>Check advanced optimization]
+    ESCALATE --> SYMPTOMS
+    
+    %% Styling
+    style PROBLEM fill:#ffebee
+    style SUCCESS fill:#e8f5e8
+    style SYMPTOMS fill:#e1f5fe
+    style VALIDATE_FIX fill:#f3e5f5
+    style ESCALATE fill:#fff3e0
+```
 
 ### Common Performance Problems
 

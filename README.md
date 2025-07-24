@@ -336,6 +336,66 @@ gh secret set PERSONAL_ACCESS_TOKEN --body "ghp_your_token_here"
 gh secret set CLAUDE_CODE_OAUTH_TOKEN --body "your_claude_oauth_token"
 ```
 
+## Troubleshooting Guide
+
+If you encounter issues with the automated workflows, use this decision tree to diagnose and resolve common problems:
+
+```mermaid
+flowchart TD
+    ISSUE([Workflow Issue]) --> TYPE{What type of issue?}
+    
+    TYPE -->|Workflow Not Triggering| TRIGGER{Check trigger conditions}
+    TYPE -->|Workflow Failing| FAILURE{Check failure type}
+    TYPE -->|Claude Code Issues| CLAUDE{Check Claude Code setup}
+    TYPE -->|Permission Issues| PERMISSION{Check permissions}
+    
+    %% Trigger Issues
+    TRIGGER -->|Labels Missing| LABEL_CHECK[Verify required labels exist:<br/>• claude<br/>• processing<br/>• ci-passed, ci-failure<br/>Run: ./scripts/create-labels.sh]
+    TRIGGER -->|Wrong Event Type| EVENT_CHECK[Check workflow triggers:<br/>• Issues: labeled, opened<br/>• PRs: opened, synchronize<br/>• Schedule: cron expressions]
+    TRIGGER -->|Branch Protection| BRANCH_CHECK[Check branch protection rules<br/>Verify workflow can run on target branch<br/>Check required status checks]
+    
+    %% Failure Issues
+    FAILURE -->|Authentication Errors| AUTH_FAILURE[Check GitHub token:<br/>• Valid and not expired<br/>• Correct permissions<br/>• Organization access if needed]
+    FAILURE -->|Rate Limiting| RATE_FAILURE[Check API rate limits:<br/>• Run: gh api rate_limit<br/>• Use GitHub App token for higher limits<br/>• Implement request throttling]
+    FAILURE -->|Script Errors| SCRIPT_FAILURE[Check script execution:<br/>• Review workflow logs<br/>• Check script permissions<br/>• Verify dependencies installed]
+    
+    %% Claude Code Issues
+    CLAUDE -->|Claude Not Responding| CLAUDE_RESPONSE[Check Claude Code setup:<br/>• Verify anthropics/claude-code-action version<br/>• Check issue content format<br/>• Review Claude Code logs]
+    CLAUDE -->|Invalid Instructions| CLAUDE_INSTRUCTIONS[Review issue content:<br/>• Clear and specific instructions<br/>• Proper formatting<br/>• Avoid ambiguous requests]
+    CLAUDE -->|Timeout Issues| CLAUDE_TIMEOUT[Check execution time:<br/>• Complex tasks may need more time<br/>• Break down large tasks<br/>• Review workflow timeout settings]
+    
+    %% Permission Issues
+    PERMISSION -->|Repository Access| REPO_ACCESS[Check repository permissions:<br/>• Read/write access to repo<br/>• Actions execution permissions<br/>• Branch protection overrides]
+    PERMISSION -->|Token Scope| TOKEN_SCOPE[Verify token scopes:<br/>• repo (full repository access)<br/>• workflow (GitHub Actions)<br/>• write:packages (if needed)]
+    PERMISSION -->|Organization Policies| ORG_POLICY[Check organization settings:<br/>• Third-party application access<br/>• GitHub Actions permissions<br/>• API usage policies]
+    
+    %% Solutions
+    LABEL_CHECK --> VERIFY{Test the fix}
+    EVENT_CHECK --> VERIFY
+    BRANCH_CHECK --> VERIFY
+    AUTH_FAILURE --> VERIFY
+    RATE_FAILURE --> VERIFY
+    SCRIPT_FAILURE --> VERIFY
+    CLAUDE_RESPONSE --> VERIFY
+    CLAUDE_INSTRUCTIONS --> VERIFY  
+    CLAUDE_TIMEOUT --> VERIFY
+    REPO_ACCESS --> VERIFY
+    TOKEN_SCOPE --> VERIFY
+    ORG_POLICY --> VERIFY
+    
+    VERIFY -->|Fixed| SUCCESS([Issue Resolved ✅])
+    VERIFY -->|Still Failing| DEBUG[Enable debug logging:<br/>Set ACTIONS_STEP_DEBUG=true<br/>Review detailed workflow logs<br/>Check GitHub Actions status page]
+    
+    DEBUG --> TYPE
+    
+    %% Styling
+    style ISSUE fill:#ffebee
+    style SUCCESS fill:#e8f5e8
+    style TYPE fill:#e1f5fe
+    style VERIFY fill:#f3e5f5
+    style DEBUG fill:#fff3e0
+```
+
 ## Workflow Files
 
 ### Core Workflows

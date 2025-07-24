@@ -28,17 +28,67 @@ Configuration values are loaded in the following order (later values override ea
 4. **Command-line Arguments** (where applicable)
 
 ```mermaid
-graph TD
-    A[default.conf] --> B[Environment Variables]
-    B --> C[Custom Config File]
-    C --> D[Command-line Args]
-    D --> E[Final Configuration]
+graph TB
+    subgraph "Configuration Sources (Priority Order)"
+        A[default.conf<br/>Base configuration]
+        B[Environment Variables<br/>Runtime overrides]
+        C[Custom Config File<br/>Environment-specific]
+        D[Command-line Args<br/>Execution-specific]
+    end
     
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    subgraph "Configuration Categories"
+        CORE[Core Settings<br/>• MAX_PARALLEL_JOBS<br/>• LOG_LEVEL<br/>• OUTPUT_FORMAT]
+        CACHE[Cache Settings<br/>• CACHE_TTL<br/>• ENABLE_CACHE<br/>• CACHE_CLEANUP_INTERVAL]
+        RATE[Rate Limiting<br/>• RATE_LIMIT_REQUESTS_PER_MINUTE<br/>• RATE_LIMIT_DELAY<br/>• BURST_SIZE]
+        ANALYSIS[Analysis Settings<br/>• WORKFLOW_ANALYSIS_LIMIT<br/>• ENABLE_BENCHMARKS<br/>• BENCHMARK_ITERATIONS]
+        VALIDATION[Validation Settings<br/>• VALIDATE_SCHEMA<br/>• CHECK_SECURITY<br/>• CHECK_PERFORMANCE]
+    end
+    
+    subgraph "Environment Profiles"
+        DEV[Development<br/>• Debug logging<br/>• Fresh cache<br/>• All validations]
+        PROD[Production<br/>• Minimal logging<br/>• Efficient cache<br/>• Conservative limits]
+        CI[CI/CD<br/>• Structured output<br/>• Fast execution<br/>• No benchmarks]
+    end
+    
+    subgraph "Validation & Loading"
+        LOAD[Configuration Loader<br/>load_config()]
+        VALIDATE[Configuration Validator<br/>validate_config()]
+        FINAL[Final Configuration<br/>Ready for use]
+    end
+    
+    %% Configuration flow
+    A --> LOAD
+    B --> LOAD
+    C --> LOAD
+    D --> LOAD
+    
+    LOAD --> VALIDATE
+    VALIDATE --> FINAL
+    
+    %% Category relationships
+    FINAL --> CORE
+    FINAL --> CACHE
+    FINAL --> RATE
+    FINAL --> ANALYSIS
+    FINAL --> VALIDATION
+    
+    %% Profile examples
+    DEV -.-> C
+    PROD -.-> C
+    CI -.-> C
+    
+    %% Error handling
+    VALIDATE -->|Validation Errors| ERROR[Configuration Error<br/>Exit with error code]
+    
+    %% Styling
+    style A fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style B fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style C fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    style D fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style FINAL fill:#ffebee,stroke:#d32f2f,stroke-width:3px
+    style ERROR fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+    style LOAD fill:#e1f5fe
+    style VALIDATE fill:#f1f8e9
 ```
 
 ### Configuration Loading Process
@@ -999,6 +1049,81 @@ run_performance_test "config/high-performance.conf" "high-performance"
 ```
 
 ## Troubleshooting Configuration Issues
+
+### Configuration Troubleshooting Decision Tree
+
+Use this decision tree to systematically diagnose and resolve configuration issues:
+
+```mermaid
+flowchart TD
+    CONFIG_ISSUE([Configuration Issue]) --> SYMPTOM_CHECK{What is the problem?}
+    
+    SYMPTOM_CHECK -->|Validation Errors| VALIDATION{Check validation type}
+    SYMPTOM_CHECK -->|Values Not Applied| OVERRIDE{Check override priority}
+    SYMPTOM_CHECK -->|Performance Issues| PERFORMANCE{Check performance impact}
+    SYMPTOM_CHECK -->|Unexpected Behavior| BEHAVIOR{Check configuration logic}
+    
+    %% Validation Path
+    VALIDATION -->|Invalid Range| RANGE_FIX[Check valid ranges:<br/>MAX_PARALLEL_JOBS: 1-32<br/>CACHE_TTL: 60-86400<br/>RATE_LIMIT_REQUESTS_PER_MINUTE: 1-120]
+    VALIDATION -->|Invalid Enum| ENUM_FIX[Check valid values:<br/>LOG_LEVEL: DEBUG,INFO,WARN,ERROR<br/>OUTPUT_FORMAT: console,json,markdown<br/>Boolean: true,false only]
+    VALIDATION -->|Missing Dependencies| DEPENDENCY_FIX[Check relationships:<br/>BENCHMARK_ITERATIONS >= 3 if benchmarks enabled<br/>RATE_LIMIT_DELAY appropriate for request rate]
+    
+    %% Override Path
+    OVERRIDE -->|Environment Not Working| ENV_CHECK{Check environment variables}
+    OVERRIDE -->|Config File Ignored| FILE_CHECK{Check config file}
+    OVERRIDE -->|Precedence Issues| PRECEDENCE_CHECK{Check loading order}
+    
+    ENV_CHECK -->|Not Exported| EXPORT_FIX[Use: export VAR=value<br/>Not: VAR=value<br/>Check with: env | grep VAR]
+    ENV_CHECK -->|Wrong Name| NAME_FIX[Verify exact variable names<br/>Check for typos<br/>Case-sensitive matching]
+    ENV_CHECK -->|Wrong Value| VALUE_FIX[Check value format<br/>Boolean: true/false<br/>Numbers: numeric only]
+    
+    FILE_CHECK -->|File Not Found| PATH_FIX[Check CONFIG_FILE path<br/>Verify file exists<br/>Use absolute paths]
+    FILE_CHECK -->|Wrong Syntax| SYNTAX_FIX[Check bash syntax<br/>No spaces around =<br/>Quote string values]
+    FILE_CHECK -->|Permissions| PERM_FIX[Check read permissions<br/>chmod +r config_file<br/>Verify ownership]
+    
+    PRECEDENCE_CHECK -->|Wrong Order| ORDER_FIX[Remember priority:<br/>1. default.conf<br/>2. Environment vars<br/>3. Custom config<br/>4. Command-line args]
+    
+    %% Performance Path
+    PERFORMANCE -->|Too Slow| SLOW_CONFIG[Check settings:<br/>MAX_PARALLEL_JOBS too low<br/>CACHE_TTL too short<br/>Too many validations enabled]
+    PERFORMANCE -->|Too Resource Intensive| RESOURCE_CONFIG[Check settings:<br/>MAX_PARALLEL_JOBS too high<br/>CACHE_TTL too long<br/>Memory constraints]
+    PERFORMANCE -->|Inconsistent Results| CONSISTENCY_CONFIG[Check settings:<br/>Cache configuration<br/>Parallel job conflicts<br/>Race conditions]
+    
+    %% Behavior Path
+    BEHAVIOR -->|Wrong Output Format| OUTPUT_CHECK[Check OUTPUT_FORMAT value<br/>Verify COLORED_OUTPUT setting<br/>Check OUTPUT_FILE permissions]
+    BEHAVIOR -->|Logging Issues| LOG_CHECK[Check LOG_LEVEL setting<br/>Verify log file permissions<br/>Check COLORED_OUTPUT for terminals]
+    BEHAVIOR -->|Cache Not Working| CACHE_CHECK[Check ENABLE_CACHE=true<br/>Verify CACHE_TTL > 0<br/>Check cache directory permissions]
+    BEHAVIOR -->|Rate Limiting Problems| RATE_CHECK[Check rate limit settings<br/>Verify GitHub token type<br/>Monitor actual usage vs limits]
+    
+    %% Solution Validation
+    RANGE_FIX --> VALIDATE_FIX{Test configuration}
+    ENUM_FIX --> VALIDATE_FIX
+    DEPENDENCY_FIX --> VALIDATE_FIX
+    EXPORT_FIX --> VALIDATE_FIX
+    NAME_FIX --> VALIDATE_FIX
+    VALUE_FIX --> VALIDATE_FIX
+    PATH_FIX --> VALIDATE_FIX
+    SYNTAX_FIX --> VALIDATE_FIX
+    PERM_FIX --> VALIDATE_FIX
+    ORDER_FIX --> VALIDATE_FIX
+    SLOW_CONFIG --> VALIDATE_FIX
+    RESOURCE_CONFIG --> VALIDATE_FIX
+    CONSISTENCY_CONFIG --> VALIDATE_FIX
+    OUTPUT_CHECK --> VALIDATE_FIX
+    LOG_CHECK --> VALIDATE_FIX
+    CACHE_CHECK --> VALIDATE_FIX
+    RATE_CHECK --> VALIDATE_FIX
+    
+    VALIDATE_FIX -->|Fixed| SUCCESS([Configuration Working ✅])
+    VALIDATE_FIX -->|Still Issues| DEBUG_CONFIG[Run ./scripts/debug-config.sh<br/>Enable DEBUG logging<br/>Check complete configuration dump]
+    DEBUG_CONFIG --> SYMPTOM_CHECK
+    
+    %% Styling
+    style CONFIG_ISSUE fill:#ffebee
+    style SUCCESS fill:#e8f5e8
+    style SYMPTOM_CHECK fill:#e1f5fe
+    style VALIDATE_FIX fill:#f3e5f5
+    style DEBUG_CONFIG fill:#fff3e0
+```
 
 ### Common Configuration Problems
 
