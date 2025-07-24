@@ -36,10 +36,46 @@ validate_config() {
         return 1
     fi
     
+    # Validate resource monitoring configuration
+    if [[ ! "$MEMORY_LIMIT_PERCENT" =~ ^[0-9]+$ ]] || [[ "$MEMORY_LIMIT_PERCENT" -lt 1 ]] || [[ "$MEMORY_LIMIT_PERCENT" -gt 100 ]]; then
+        log_error "Invalid MEMORY_LIMIT_PERCENT value: $MEMORY_LIMIT_PERCENT (must be 1-100)"
+        return 1
+    fi
+    
+    if [[ ! "$CPU_LIMIT_PERCENT" =~ ^[0-9]+$ ]] || [[ "$CPU_LIMIT_PERCENT" -lt 1 ]] || [[ "$CPU_LIMIT_PERCENT" -gt 100 ]]; then
+        log_error "Invalid CPU_LIMIT_PERCENT value: $CPU_LIMIT_PERCENT (must be 1-100)"
+        return 1
+    fi
+    
+    if [[ ! "$MIN_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$MIN_PARALLEL_JOBS" -lt 1 ]]; then
+        log_error "Invalid MIN_PARALLEL_JOBS value: $MIN_PARALLEL_JOBS (must be >= 1)"
+        return 1
+    fi
+    
+    if [[ ! "$MAX_SYSTEM_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$MAX_SYSTEM_PARALLEL_JOBS" -lt 1 ]]; then
+        log_error "Invalid MAX_SYSTEM_PARALLEL_JOBS value: $MAX_SYSTEM_PARALLEL_JOBS (must be >= 1)"
+        return 1
+    fi
+    
+    if [[ ! "$RESOURCE_CHECK_INTERVAL" =~ ^[0-9]+$ ]] || [[ "$RESOURCE_CHECK_INTERVAL" -lt 1 ]]; then
+        log_error "Invalid RESOURCE_CHECK_INTERVAL value: $RESOURCE_CHECK_INTERVAL (must be >= 1)"
+        return 1
+    fi
+    
+    if [[ ! "$PARALLEL_JOB_TIMEOUT" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOB_TIMEOUT" -lt 1 ]]; then
+        log_error "Invalid PARALLEL_JOB_TIMEOUT value: $PARALLEL_JOB_TIMEOUT (must be >= 1)"
+        return 1
+    fi
+    
     # Validate boolean values
     case "$ENABLE_CACHE" in
         true|false) ;;
         *) log_error "Invalid ENABLE_CACHE value: $ENABLE_CACHE (must be true or false)"; return 1 ;;
+    esac
+    
+    case "$RESOURCE_MONITOR_ENABLED" in
+        true|false) ;;
+        *) log_error "Invalid RESOURCE_MONITOR_ENABLED value: $RESOURCE_MONITOR_ENABLED (must be true or false)"; return 1 ;;
     esac
 }
 
@@ -351,7 +387,6 @@ PARALLEL_JOB_TIMEOUT=${PARALLEL_JOB_TIMEOUT:-300}
 # Global resource monitoring variables
 CURRENT_MEMORY_USAGE=0
 CURRENT_CPU_USAGE=0
-ACTIVE_PARALLEL_JOBS=0
 RESOURCE_MONITOR_PID=0
 
 # Get current system memory usage in percentage
@@ -381,17 +416,25 @@ get_available_memory() {
 
 # Get current CPU usage percentage
 get_cpu_usage() {
-    local cpu_usage
-    if command -v top >/dev/null 2>&1; then
-        cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' 2>/dev/null | cut -d. -f1 || echo 0)
+    local cpu_usage=0
+    
+    # Try multiple methods with better parsing
+    if command -v sar >/dev/null 2>&1; then
+        cpu_usage=$(sar -u 1 1 2>/dev/null | tail -1 | awk '{print int(100-$8)}' 2>/dev/null || echo 0)
+    elif command -v vmstat >/dev/null 2>&1; then
+        cpu_usage=$(vmstat 1 2 2>/dev/null | tail -1 | awk '{print int(100-$15)}' 2>/dev/null || echo 0)
+    elif command -v top >/dev/null 2>&1; then
+        cpu_usage=$(top -bn1 2>/dev/null | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' 2>/dev/null | cut -d. -f1 || echo 0)
     elif command -v iostat >/dev/null 2>&1; then
-        cpu_usage=$(iostat -c 1 1 | tail -1 | awk '{print int(100-$6)}' 2>/dev/null || echo 0)
-    else
+        cpu_usage=$(iostat -c 1 1 2>/dev/null | tail -1 | awk '{print int(100-$6)}' 2>/dev/null || echo 0)
+    fi
+    
+    # Validate result is numeric and within valid range
+    if [[ ! "$cpu_usage" =~ ^[0-9]+$ ]] || [[ "$cpu_usage" -lt 0 ]] || [[ "$cpu_usage" -gt 100 ]]; then
         cpu_usage=0
     fi
     
-    # Ensure we return an integer
-    echo "${cpu_usage:-0}"
+    echo "$cpu_usage"
 }
 
 # Get system load average
@@ -453,6 +496,13 @@ check_system_resources() {
 # Calculate optimal number of parallel jobs based on available resources
 calculate_optimal_parallel_jobs() {
     local base_jobs="${1:-$MAX_PARALLEL_JOBS}"
+    
+    # Validate input
+    if [[ ! "$base_jobs" =~ ^[0-9]+$ ]] || [[ "$base_jobs" -lt 1 ]]; then
+        log_error "Invalid base_jobs: $base_jobs (must be positive integer)"
+        return 1
+    fi
+    
     local memory_usage cpu_usage available_memory cpu_cores
     
     memory_usage=$(get_memory_usage)
@@ -475,6 +525,10 @@ calculate_optimal_parallel_jobs() {
     # Adjust based on available memory (assume each job needs ~100MB)
     local memory_based_jobs
     memory_based_jobs=$((available_memory / 100))
+    # Ensure minimum of 1 job to prevent division by zero
+    if [[ $memory_based_jobs -lt 1 ]]; then
+        memory_based_jobs=1
+    fi
     if [[ $memory_based_jobs -lt $optimal_jobs ]]; then
         optimal_jobs=$memory_based_jobs
     fi
@@ -499,6 +553,12 @@ run_parallel_with_resource_limits() {
     local function_name="$1"
     local input_files=("${@:2}")
     local optimal_jobs
+    
+    # Validate function name to prevent command injection
+    if [[ ! "$function_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        log_error "Invalid function name: $function_name (contains unsafe characters)"
+        return 1
+    fi
     
     if [[ ! "$RESOURCE_MONITOR_ENABLED" == "true" ]]; then
         # Fall back to standard parallel execution
@@ -570,7 +630,14 @@ start_resource_monitor() {
 # Stop background resource monitoring  
 stop_resource_monitor() {
     if [[ $RESOURCE_MONITOR_PID -gt 0 ]]; then
-        kill $RESOURCE_MONITOR_PID 2>/dev/null || true
+        # Validate that the PID belongs to our process
+        if kill -0 $RESOURCE_MONITOR_PID 2>/dev/null; then
+            kill $RESOURCE_MONITOR_PID 2>/dev/null || true
+            # Give it a moment to terminate gracefully
+            sleep 0.1
+            # Force kill if still running
+            kill -KILL $RESOURCE_MONITOR_PID 2>/dev/null || true
+        fi
         wait $RESOURCE_MONITOR_PID 2>/dev/null || true
         RESOURCE_MONITOR_PID=0
     fi
@@ -663,6 +730,5 @@ cleanup_resource_monitor() {
     # Reset global variables
     CURRENT_MEMORY_USAGE=0
     CURRENT_CPU_USAGE=0
-    ACTIVE_PARALLEL_JOBS=0
     RESOURCE_MONITOR_PID=0
 }
