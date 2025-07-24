@@ -24,7 +24,12 @@
     "dev:watch": "nodemon --watch .github/workflows/ --ext yml,yaml --ignore 'node_modules/**' --ignore '.git/**' --exec 'npm run lint:yaml'",
     "repo:status": "gh repo view --json permissions,security && gh api rate_limit",
     "workflows:list": "gh workflow list",
-    "workflows:status": "gh run list --limit=20 --json status,conclusion,name --jq 'group_by(.status) | map({status: .[0].status, count: length}) | sort_by(.count) | reverse'"
+    "workflows:status": "gh run list --limit=20 --json status,conclusion,name --jq 'group_by(.status) | map({status: .[0].status, count: length}) | sort_by(.count) | reverse'",
+    "test:setup": "tests/setup-bats.sh",
+    "test:bats": "tests/bats/bats-core/bin/bats tests/*.bats",
+    "test:coverage": "tests/bats/bats-core/bin/bats --report-formatter tap tests/*.bats | tee test-results.tap",
+    "test:watch": "find tests -name \"*.bats\" | entr -c npm run test:bats",
+    "test:clean": "rm -rf tests/bats test-results.tap"
   },
   "repository": {
     "type": "git",
