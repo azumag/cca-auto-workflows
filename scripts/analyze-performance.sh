@@ -5,72 +5,17 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common library
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/lib/common.sh"
 
 # Cache configuration
 CACHE_DIR="${TMPDIR:-/tmp}/analyze-performance-cache"
 CACHE_TTL=300  # 5 minutes cache TTL
 
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
-
+# Override log_header for this script's specific purpose
 log_header() {
     echo -e "${BLUE}[ANALYSIS]${NC} $*"
-}
-
-setup_cache() {
-    mkdir -p "$CACHE_DIR"
-}
-
-get_cache_key() {
-    echo -n "$1" | sha256sum | cut -d' ' -f1
-}
-
-is_cache_valid() {
-    local cache_file="$1"
-    if [[ ! -f "$cache_file" ]]; then
-        return 1
-    fi
-    
-    local cache_time
-    cache_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
-    local current_time
-    current_time=$(date +%s)
-    
-    [[ $((current_time - cache_time)) -lt $CACHE_TTL ]]
-}
-
-get_from_cache() {
-    local key="$1"
-    local cache_file="$CACHE_DIR/$key"
-    
-    if is_cache_valid "$cache_file"; then
-        cat "$cache_file"
-        return 0
-    fi
-    return 1
-}
-
-save_to_cache() {
-    local key="$1"
-    local data="$2"
-    local cache_file="$CACHE_DIR/$key"
-    
-    echo "$data" > "$cache_file"
 }
 
 cached_gh_api_call() {
@@ -78,13 +23,13 @@ cached_gh_api_call() {
     local cache_key
     cache_key=$(get_cache_key "$endpoint")
     
-    if get_from_cache "$cache_key"; then
+    if get_from_cache "$cache_key" "$CACHE_DIR" "$CACHE_TTL"; then
         return 0
     fi
     
     local result
     if result=$(gh api "$endpoint" 2>/dev/null); then
-        save_to_cache "$cache_key" "$result"
+        save_to_cache "$cache_key" "$result" "$CACHE_DIR"
         echo "$result"
         return 0
     fi
@@ -96,34 +41,19 @@ cached_gh_run_list() {
     local cache_key
     cache_key=$(get_cache_key "run_list_$args")
     
-    if get_from_cache "$cache_key"; then
+    if get_from_cache "$cache_key" "$CACHE_DIR" "$CACHE_TTL"; then
         return 0
     fi
     
     local result
     if result=$(gh run list $args 2>/dev/null); then
-        save_to_cache "$cache_key" "$result"
+        save_to_cache "$cache_key" "$result" "$CACHE_DIR"
         echo "$result"
         return 0
     fi
     return 1
 }
 
-cleanup_cache() {
-    if [[ -d "$CACHE_DIR" ]]; then
-        find "$CACHE_DIR" -type f -mmin +$((CACHE_TTL / 60)) -delete 2>/dev/null || true
-    fi
-}
-
-show_cache_stats() {
-    if [[ -d "$CACHE_DIR" ]]; then
-        local cache_files
-        cache_files=$(find "$CACHE_DIR" -type f 2>/dev/null | wc -l)
-        if [[ $cache_files -gt 0 ]]; then
-            log_info "💾 Using cached data ($cache_files cached responses)"
-        fi
-    fi
-}
 
 analyze_workflow_runtime() {
     log_header "Analyzing workflow runtime performance..."
@@ -268,9 +198,9 @@ main() {
     log_info "📊 Starting performance analysis for Claude Code Auto Workflows..."
     
     # Initialize cache and cleanup old entries
-    setup_cache
-    cleanup_cache
-    show_cache_stats
+    setup_cache "$CACHE_DIR"
+    cleanup_cache "$CACHE_DIR" "$CACHE_TTL"
+    show_cache_stats "$CACHE_DIR" "data"
     
     echo
     

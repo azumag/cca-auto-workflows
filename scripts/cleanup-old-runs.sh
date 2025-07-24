@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# Source common library
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/lib/common.sh"
+
 # Default settings
 DEFAULT_KEEP_DAYS=30
 DEFAULT_MAX_RUNS=100
@@ -16,46 +20,11 @@ RATE_LIMIT_REQUESTS_PER_MINUTE=30
 RATE_LIMIT_DELAY=2  # seconds between operations
 BURST_SIZE=5  # allow burst of operations before applying delay
 
-# Colors for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
-
+# Override log_header for this script's specific purpose
 log_header() {
     echo -e "${BLUE}[CLEANUP]${NC} $*"
 }
 
-show_progress() {
-    local current=$1
-    local total=$2
-    local operation=$3
-    local percent=$((current * 100 / total))
-    local filled=$((percent / 2))
-    local empty=$((50 - filled))
-    
-    printf "\r${BLUE}[PROGRESS]${NC} %s: [" "$operation"
-    printf "%*s" $filled | tr ' ' '█'
-    printf "%*s" $empty | tr ' ' '░'
-    printf "] %d/%d (%d%%)" "$current" "$total" "$percent"
-    
-    if [[ $current -eq $total ]]; then
-        echo
-    fi
-}
 
 # Rate limiting state
 OPERATION_COUNT=0

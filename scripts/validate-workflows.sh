@@ -5,12 +5,9 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common library
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/lib/common.sh"
 
 ERRORS=0
 WARNINGS=0
@@ -20,10 +17,7 @@ MAX_PARALLEL_JOBS=4  # Number of parallel validation jobs
 CACHE_DIR="${TMPDIR:-/tmp}/validate-workflows-cache"
 CACHE_TTL=1800  # 30 minutes cache TTL
 
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
-
+# Override log functions to track errors/warnings
 log_warn() {
     echo -e "${YELLOW}[WARN]${NC} $*"
     ((WARNINGS++))
@@ -38,38 +32,20 @@ log_header() {
     echo -e "${BLUE}[VALIDATION]${NC} $*"
 }
 
-setup_cache() {
-    mkdir -p "$CACHE_DIR"
-}
-
-get_cache_key() {
+get_validation_cache_key() {
     local file="$1"
     local file_hash
     file_hash=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)
     echo "${file_hash}_$(stat -c %Y "$file" 2>/dev/null || echo 0)"
 }
 
-is_cache_valid() {
-    local cache_file="$1"
-    if [[ ! -f "$cache_file" ]]; then
-        return 1
-    fi
-    
-    local cache_time
-    cache_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
-    local current_time
-    current_time=$(date +%s)
-    
-    [[ $((current_time - cache_time)) -lt $CACHE_TTL ]]
-}
-
 get_validation_from_cache() {
     local file="$1"
     local cache_key
-    cache_key=$(get_cache_key "$file")
+    cache_key=$(get_validation_cache_key "$file")
     local cache_file="$CACHE_DIR/$cache_key"
     
-    if is_cache_valid "$cache_file"; then
+    if is_cache_valid "$cache_file" "$CACHE_TTL"; then
         cat "$cache_file"
         return 0
     fi
@@ -80,16 +56,10 @@ save_validation_to_cache() {
     local file="$1"
     local result="$2"
     local cache_key
-    cache_key=$(get_cache_key "$file")
-    local cache_file="$CACHE_DIR/$cache_key"
+    cache_key=$(get_validation_cache_key "$file")
     
-    echo "$result" > "$cache_file"
-}
-
-cleanup_cache() {
-    if [[ -d "$CACHE_DIR" ]]; then
-        find "$CACHE_DIR" -type f -mmin +$((CACHE_TTL / 60)) -delete 2>/dev/null || true
-    fi
+    # Use atomic save to prevent race conditions
+    save_to_cache "$cache_key" "$result" "$CACHE_DIR"
 }
 
 validate_single_file() {
@@ -293,16 +263,21 @@ parallel_validate_workflows() {
             temp_file=$(mktemp)
             temp_files+=("$temp_file")
             
-            # Run validation in background
+            # Run validation in background with secure temp file
+            chmod 600 "$temp_file"
             validate_single_file "$file" > "$temp_file" 2>&1 &
             pids+=($!)
             
             ((file_index++))
         done
         
-        # Wait for all jobs in this batch to complete
+        # Wait for all jobs in this batch to complete with error handling
+        local failed_jobs=0
         for ((i=0; i<${#pids[@]}; i++)); do
-            wait "${pids[$i]}"
+            if ! wait "${pids[$i]}"; then
+                log_error "Validation job failed for PID ${pids[$i]}"
+                ((failed_jobs++))
+            fi
             
             # Process results
             local result
@@ -315,9 +290,13 @@ parallel_validate_workflows() {
             ERRORS=$((ERRORS + errors))
             WARNINGS=$((WARNINGS + warnings))
             
-            # Clean up temp file
+            # Clean up temp file securely
             rm -f "${temp_files[$i]}"
         done
+        
+        if [[ $failed_jobs -gt 0 ]]; then
+            log_warn "$failed_jobs validation jobs failed in this batch"
+        fi
         
         # Show progress
         local processed=$((file_index > total_files ? total_files : file_index))
@@ -559,17 +538,11 @@ main() {
     log_info "🔍 Starting workflow validation for Claude Code Auto Workflows..."
     
     # Initialize cache and cleanup old entries
-    setup_cache
-    cleanup_cache
+    setup_cache "$CACHE_DIR"
+    cleanup_cache "$CACHE_DIR" "$CACHE_TTL"
     
     # Show cache stats
-    if [[ -d "$CACHE_DIR" ]]; then
-        local cache_files
-        cache_files=$(find "$CACHE_DIR" -type f 2>/dev/null | wc -l)
-        if [[ $cache_files -gt 0 ]]; then
-            log_info "💾 Using cached validation results ($cache_files cached files)"
-        fi
-    fi
+    show_cache_stats "$CACHE_DIR" "validation results"
     
     echo
     
