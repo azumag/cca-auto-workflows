@@ -797,8 +797,588 @@ EOF
 chmod +x regression-test.sh
 ```
 
+## 🔧 Configuration Examples
+
+### Using Different Configuration Files
+
+#### Development Configuration
+```bash
+# Create development-specific configuration
+cat > config/development.conf << 'EOF'
+# Development Configuration
+MAX_PARALLEL_JOBS=2
+CACHE_TTL=300
+LOG_LEVEL=DEBUG
+ENABLE_BENCHMARKS=true
+COLORED_OUTPUT=true
+OUTPUT_FORMAT=console
+EOF
+
+# Use development configuration
+CONFIG_FILE="config/development.conf" ./scripts/analyze-performance.sh
+```
+
+#### Production Configuration
+```bash
+# Create production-optimized configuration  
+cat > config/production.conf << 'EOF'
+# Production Configuration
+MAX_PARALLEL_JOBS=8
+CACHE_TTL=3600
+LOG_LEVEL=WARN
+ENABLE_BENCHMARKS=false
+COLORED_OUTPUT=false
+OUTPUT_FORMAT=json
+RATE_LIMIT_REQUESTS_PER_MINUTE=15
+DEFAULT_KEEP_DAYS=90
+EOF
+
+# Use production configuration
+CONFIG_FILE="config/production.conf" ./scripts/analyze-performance.sh --output prod-report.json
+```
+
+#### Environment Variable Overrides
+```bash
+# Override specific settings via environment variables
+export MAX_PARALLEL_JOBS=16
+export LOG_LEVEL=DEBUG
+export ENABLE_BENCHMARKS=true
+
+# Run with overrides
+./scripts/analyze-performance.sh
+
+# Temporary override for single execution
+CACHE_TTL=300 LOG_LEVEL=DEBUG ./scripts/analyze-performance.sh
+```
+
+### Dynamic Configuration Examples
+
+#### Auto-Optimized Configuration
+```bash
+# Create adaptive configuration script
+cat > scripts/auto-optimize-config.sh << 'EOF'
+#!/bin/bash
+
+# Auto-detect optimal settings
+CPU_CORES=$(nproc)
+MEMORY_GB=$(($(free -m | awk 'NR==2{print $2}') / 1024))
+
+# Set parallel jobs based on CPU cores
+if [[ $CPU_CORES -ge 8 ]]; then
+    export MAX_PARALLEL_JOBS=8
+elif [[ $CPU_CORES -ge 4 ]]; then
+    export MAX_PARALLEL_JOBS=4
+else
+    export MAX_PARALLEL_JOBS=2
+fi
+
+# Set cache TTL based on available memory
+if [[ $MEMORY_GB -ge 8 ]]; then
+    export CACHE_TTL=3600
+elif [[ $MEMORY_GB -ge 4 ]]; then
+    export CACHE_TTL=1800
+else
+    export CACHE_TTL=900
+fi
+
+echo "Auto-optimized configuration:"
+echo "  CPU cores: $CPU_CORES → MAX_PARALLEL_JOBS: $MAX_PARALLEL_JOBS"
+echo "  Memory: ${MEMORY_GB}GB → CACHE_TTL: $CACHE_TTL"
+
+# Run analysis with optimized settings
+./scripts/analyze-performance.sh "$@"
+EOF
+
+chmod +x scripts/auto-optimize-config.sh
+
+# Use auto-optimized configuration
+./scripts/auto-optimize-config.sh --benchmarks
+```
+
+#### Environment-Specific Configuration Loading
+```bash
+# Create environment detection script
+detect_and_run() {
+    local config_file
+    
+    if [[ "${CI:-false}" == "true" ]]; then
+        config_file="config/ci.conf"
+        echo "Detected CI environment, using: $config_file"
+    elif [[ "${NODE_ENV:-}" == "production" ]]; then
+        config_file="config/production.conf"
+        echo "Detected production environment, using: $config_file"
+    else
+        config_file="config/development.conf"
+        echo "Using development environment: $config_file"
+    fi
+    
+    CONFIG_FILE="$config_file" ./scripts/analyze-performance.sh "$@"
+}
+
+# Use environment detection
+detect_and_run --format json --output environment-report.json
+```
+
+## 🔄 Workflow Integration Examples
+
+### GitHub Actions Integration
+
+#### Scheduled Performance Monitoring
+```yaml
+# .github/workflows/performance-monitoring.yml
+name: Performance Monitoring
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+
+jobs:
+  performance-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup configuration
+        run: |
+          # Create CI-optimized configuration
+          cat > config/ci-monitoring.conf << 'EOF'
+          MAX_PARALLEL_JOBS=4
+          CACHE_TTL=1800
+          LOG_LEVEL=INFO
+          OUTPUT_FORMAT=json
+          ENABLE_BENCHMARKS=false
+          COLORED_OUTPUT=false
+          EOF
+          
+      - name: Run performance analysis
+        run: |
+          CONFIG_FILE="config/ci-monitoring.conf" \
+          ./scripts/analyze-performance.sh \
+            --format json \
+            --output performance-report.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Process results
+        run: |
+          # Extract key metrics
+          API_USAGE=$(jq -r '.api_usage.usage_percent // 0' performance-report.json)
+          
+          if (( $(echo "$API_USAGE > 80" | bc -l) )); then
+            echo "::warning::High API usage detected: $API_USAGE%"
+          fi
+          
+      - name: Upload performance report
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-report-${{ github.run_id }}
+          path: performance-report.json
+```
+
+#### PR Performance Validation
+```yaml
+# .github/workflows/pr-performance-check.yml
+name: PR Performance Check
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/**'
+
+jobs:
+  performance-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        
+      - name: Run performance benchmarks
+        run: |
+          # Use development configuration for PR testing
+          export MAX_PARALLEL_JOBS=2
+          export CACHE_TTL=300
+          export LOG_LEVEL=INFO
+          export ENABLE_BENCHMARKS=true
+          
+          ./scripts/benchmark-performance.sh > pr-benchmark-results.txt
+          
+      - name: Compare with baseline
+        run: |
+          # Create simple performance comparison
+          if grep -q "Performance regression detected" pr-benchmark-results.txt; then
+            echo "::error::Performance regression detected in PR"
+            cat pr-benchmark-results.txt
+            exit 1
+          else
+            echo "✅ No performance regressions detected"
+          fi
+          
+      - name: Comment PR with results
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('pr-benchmark-results.txt', 'utf8');
+            
+            const body = `## Performance Benchmark Results
+            
+            \`\`\`
+            ${results}
+            \`\`\`
+            
+            Generated by Performance Testing Framework
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+```
+
+### Pre-commit Hook Integration
+
+#### Performance Validation Pre-commit Hook
+```bash
+# Create .git/hooks/pre-commit
+cat > .git/hooks/pre-commit << 'EOF'
+#!/bin/bash
+
+echo "Running performance validation before commit..."
+
+# Quick performance check with minimal configuration
+export MAX_PARALLEL_JOBS=2
+export CACHE_TTL=300
+export LOG_LEVEL=WARN
+export ENABLE_BENCHMARKS=false
+
+# Run quick analysis
+if ! ./scripts/analyze-performance.sh > /dev/null 2>&1; then
+    echo "❌ Performance analysis failed. Please check your changes."
+    exit 1
+fi
+
+# Validate configuration if config files changed
+if git diff --cached --name-only | grep -q "config/\|scripts/config/"; then
+    echo "Configuration files changed, validating..."
+    if ! ./scripts/validate-config.sh; then
+        echo "❌ Configuration validation failed."
+        exit 1
+    fi
+fi
+
+echo "✅ Performance validation passed"
+EOF
+
+chmod +x .git/hooks/pre-commit
+```
+
+## 📊 Monitoring and Alerting Examples
+
+### Slack Integration
+```bash
+# Create Slack notification script
+cat > scripts/notify-slack.sh << 'EOF'
+#!/bin/bash
+
+WEBHOOK_URL="${SLACK_WEBHOOK_URL}"
+REPORT_FILE="$1"
+
+if [[ -z "$WEBHOOK_URL" || -z "$REPORT_FILE" ]]; then
+    echo "Usage: $0 <report-file>"
+    echo "Set SLACK_WEBHOOK_URL environment variable"
+    exit 1
+fi
+
+# Extract key metrics
+API_USAGE=$(jq -r '.api_usage.usage_percent // 0' "$REPORT_FILE")
+WORKFLOWS_COUNT=$(jq -r '.workflows.total_count // 0' "$REPORT_FILE")
+
+# Create alert message
+MESSAGE="Performance Report:
+• API Usage: ${API_USAGE}%
+• Workflows: ${WORKFLOWS_COUNT}
+• Generated: $(date)"
+
+# Add warning if high usage
+if (( $(echo "$API_USAGE > 80" | bc -l) )); then
+    MESSAGE="🚨 HIGH API USAGE ALERT!\n$MESSAGE"
+fi
+
+# Send to Slack
+curl -X POST -H 'Content-type: application/json' \
+    --data "{\"text\":\"$MESSAGE\"}" \
+    "$WEBHOOK_URL"
+EOF
+
+chmod +x scripts/notify-slack.sh
+
+# Use Slack notifications
+./scripts/analyze-performance.sh --format json --output daily-report.json
+./scripts/notify-slack.sh daily-report.json
+```
+
+### Email Alerts
+```bash
+# Create email notification script
+cat > scripts/email-alert.sh << 'EOF'
+#!/bin/bash
+
+EMAIL_TO="${ALERT_EMAIL:-admin@company.com}"
+REPORT_FILE="$1"
+
+if [[ -z "$REPORT_FILE" ]]; then
+    echo "Usage: $0 <report-file>"
+    exit 1
+fi
+
+# Extract metrics
+API_USAGE=$(jq -r '.api_usage.usage_percent // 0' "$REPORT_FILE")
+
+# Send email if high usage
+if (( $(echo "$API_USAGE > 80" | bc -l) )); then
+    {
+        echo "Subject: GitHub API Usage Alert - ${API_USAGE}%"
+        echo "From: monitoring@company.com"
+        echo
+        echo "High GitHub API usage detected: ${API_USAGE}%"
+        echo
+        echo "Full report:"
+        jq '.' "$REPORT_FILE"
+    } | sendmail "$EMAIL_TO"
+fi
+EOF
+
+chmod +x scripts/email-alert.sh
+
+# Use email alerts
+./scripts/analyze-performance.sh --format json --output hourly-report.json
+./scripts/email-alert.sh hourly-report.json
+```
+
+## 🏗️ Custom Workflow Examples
+
+### Multi-Repository Analysis
+```bash
+# Create multi-repo analysis script
+cat > scripts/analyze-multiple-repos.sh << 'EOF'
+#!/bin/bash
+
+REPOSITORIES=(
+    "org/repo1"
+    "org/repo2"
+    "org/repo3"
+)
+
+RESULTS_DIR="multi-repo-analysis-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$RESULTS_DIR"
+
+# Configure for multi-repo analysis
+export MAX_PARALLEL_JOBS=2  # Conservative for multiple repos
+export CACHE_TTL=3600       # Longer cache for batch processing
+export LOG_LEVEL=INFO
+export OUTPUT_FORMAT=json
+
+for repo in "${REPOSITORIES[@]}"; do
+    echo "Analyzing repository: $repo"
+    
+    # Set repository context
+    export GITHUB_REPOSITORY="$repo"
+    
+    # Run analysis for this repository
+    ./scripts/analyze-performance.sh \
+        --output "$RESULTS_DIR/${repo//\//-}-report.json"
+done
+
+# Generate combined report
+echo "Generating combined report..."
+jq -s '.' "$RESULTS_DIR"/*.json > "$RESULTS_DIR/combined-report.json"
+
+echo "Multi-repository analysis complete: $RESULTS_DIR/"
+EOF
+
+chmod +x scripts/analyze-multiple-repos.sh
+
+# Run multi-repo analysis
+./scripts/analyze-multiple-repos.sh
+```
+
+### Continuous Performance Testing
+```bash
+# Create continuous testing script
+cat > scripts/continuous-performance-test.sh << 'EOF'
+#!/bin/bash
+
+INTERVAL_MINUTES=${1:-60}  # Default: every hour
+TEST_DURATION_HOURS=${2:-24}  # Default: run for 24 hours
+
+echo "Starting continuous performance testing..."
+echo "Interval: $INTERVAL_MINUTES minutes"
+echo "Duration: $TEST_DURATION_HOURS hours"
+
+RESULTS_DIR="continuous-test-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$RESULTS_DIR"
+
+# Configure for continuous testing
+export MAX_PARALLEL_JOBS=2
+export CACHE_TTL=1800
+export LOG_LEVEL=WARN
+export OUTPUT_FORMAT=json
+
+# Calculate end time
+END_TIME=$(($(date +%s) + (TEST_DURATION_HOURS * 3600)))
+
+while [[ $(date +%s) -lt $END_TIME ]]; do
+    TIMESTAMP=$(date -Iseconds)
+    echo "[$TIMESTAMP] Running performance test..."
+    
+    # Run analysis
+    ./scripts/analyze-performance.sh \
+        --benchmarks \
+        --output "$RESULTS_DIR/test-$TIMESTAMP.json"
+    
+    # Check for performance issues
+    API_USAGE=$(jq -r '.api_usage.usage_percent // 0' "$RESULTS_DIR/test-$TIMESTAMP.json")
+    
+    if (( $(echo "$API_USAGE > 90" | bc -l) )); then
+        echo "[$TIMESTAMP] ALERT: Critical API usage: $API_USAGE%"
+    fi
+    
+    # Wait for next interval
+    sleep $((INTERVAL_MINUTES * 60))
+done
+
+echo "Continuous testing completed. Results in: $RESULTS_DIR/"
+EOF
+
+chmod +x scripts/continuous-performance-test.sh
+
+# Run continuous testing (every 30 minutes for 12 hours)
+./scripts/continuous-performance-test.sh 30 12
+```
+
+### Custom Report Generation
+```bash
+# Create custom report generator
+cat > scripts/generate-custom-report.sh << 'EOF'
+#!/bin/bash
+
+REPORT_TYPE="${1:-daily}"
+OUTPUT_FILE="${2:-custom-report.html}"
+
+echo "Generating custom $REPORT_TYPE report..."
+
+# Run analysis with appropriate configuration
+case "$REPORT_TYPE" in
+    daily)
+        export CACHE_TTL=1800
+        export WORKFLOW_ANALYSIS_LIMIT=50
+        ;;
+    weekly)
+        export CACHE_TTL=3600
+        export WORKFLOW_ANALYSIS_LIMIT=200
+        ;;
+    monthly)
+        export CACHE_TTL=7200
+        export WORKFLOW_ANALYSIS_LIMIT=500
+        ;;
+esac
+
+# Generate data
+./scripts/analyze-performance.sh --format json --output temp-data.json
+
+# Create HTML report
+cat > "$OUTPUT_FILE" << 'HTML'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Performance Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .metric { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .good { border-left: 5px solid #28a745; }
+        .warning { border-left: 5px solid #ffc107; }
+        .danger { border-left: 5px solid #dc3545; }
+        .chart { width: 100%; height: 300px; margin: 20px 0; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Performance Report - REPORT_TYPE</h1>
+    <div id="content"></div>
+    
+    <script>
+        fetch('temp-data.json')
+            .then(response => response.json())
+            .then(data => {
+                const content = document.getElementById('content');
+                
+                // API Usage metric
+                const apiUsage = data.api_usage?.usage_percent || 0;
+                const apiClass = apiUsage > 80 ? 'danger' : apiUsage > 60 ? 'warning' : 'good';
+                
+                content.innerHTML += `
+                    <div class="metric ${apiClass}">
+                        <h3>GitHub API Usage</h3>
+                        <p><strong>${apiUsage}%</strong> of rate limit used</p>
+                        <p>Remaining: ${data.api_usage?.remaining || 0} requests</p>
+                    </div>
+                `;
+                
+                // Workflow metrics
+                content.innerHTML += `
+                    <div class="metric good">
+                        <h3>Workflow Analysis</h3>
+                        <p><strong>${data.workflows?.total_count || 0}</strong> workflows analyzed</p>
+                        <p>Generated: ${new Date().toLocaleString()}</p>
+                    </div>
+                `;
+            });
+    </script>
+</body>
+</html>
+HTML
+
+# Replace template variables
+sed -i "s/REPORT_TYPE/$REPORT_TYPE/g" "$OUTPUT_FILE"
+
+echo "Custom report generated: $OUTPUT_FILE"
+EOF
+
+chmod +x scripts/generate-custom-report.sh
+
+# Generate different types of reports
+./scripts/generate-custom-report.sh daily daily-report.html
+./scripts/generate-custom-report.sh weekly weekly-report.html
+```
+
 This comprehensive set of examples should help users understand how to effectively use the performance testing framework in various scenarios, from basic usage to advanced integrations.
+
+## 📚 Additional Resources
+
+### Configuration Examples Repository
+For more configuration examples and templates, see:
+- `config/` directory for sample configurations
+- [Configuration Guide](CONFIGURATION.md) for detailed configuration options
+- [Performance Tuning Guide](PERFORMANCE_TUNING.md) for optimization strategies
+
+### Integration Patterns
+- **CI/CD Integration**: See examples above for GitHub Actions integration
+- **Monitoring Integration**: Slack, email, and custom alerting examples
+- **Multi-repository Analysis**: Batch processing across multiple repositories
+- **Custom Reporting**: HTML, JSON, and dashboard integration examples
+
+### Best Practices
+- Use environment-specific configurations
+- Implement proper error handling and alerting  
+- Monitor API usage to avoid rate limiting
+- Regular performance regression testing
+- Automated configuration validation
 
 ---
 
-*For more examples and advanced usage patterns, see the [Performance Testing Documentation](PERFORMANCE_TESTING.md).*
+*For more examples and advanced usage patterns, see the [Performance Testing Documentation](PERFORMANCE_TESTING.md), [Architecture Overview](ARCHITECTURE.md), and [Configuration Guide](CONFIGURATION.md).*
