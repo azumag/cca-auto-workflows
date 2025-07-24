@@ -42,6 +42,8 @@ This documentation provides complete coverage of system architecture, configurat
 - **GitHub**: Personal Access Token or GitHub App authentication
 - **Resources**: Minimum 2GB RAM, 1GB free disk space
 
+For detailed version compatibility information, see the [Version Compatibility](#version-compatibility) section below.
+
 ### 2. Installation
 
 ```bash
@@ -183,6 +185,113 @@ CONFIG_FILE="config/my-config.conf" ./scripts/analyze-performance.sh
 - [Workflow Integration Examples](USAGE_EXAMPLES.md#workflow-integration-examples) - CI/CD integration
 - [Monitoring and Alerting Examples](USAGE_EXAMPLES.md#monitoring-and-alerting-examples) - Monitoring setup
 - [Custom Workflow Examples](USAGE_EXAMPLES.md#custom-workflow-examples) - Advanced patterns
+
+## 🔄 Version Compatibility
+
+Claude Code Auto Workflows supports multiple environments and platforms. Here's a quick reference for version requirements:
+
+### System Requirements Summary
+
+| Component | Minimum Version | Recommended | Installation |
+|-----------|----------------|-------------|--------------|
+| **Node.js** | 18.0.0 | 18.19.0+ (LTS) | [nodejs.org](https://nodejs.org/) |
+| **npm** | 9.0.0 | 10.2.3+ | Included with Node.js |
+| **Bash** | 4.0+ | 5.0+ | System package manager |
+| **GitHub CLI** | 2.0.0+ | Latest | [cli.github.com](https://cli.github.com/) |
+| **jq** | 1.6+ | Latest | `apt install jq` / `brew install jq` |
+| **git** | 2.20+ | Latest | System package manager |
+
+### Platform Support Matrix
+
+| Platform | Compatibility | Notes |
+|----------|---------------|-------|
+| **Ubuntu 20.04+** | ✅ Full Support | Recommended for production |
+| **Ubuntu 18.04** | ⚠️ Limited | Requires Node.js 18+ manual installation |
+| **macOS 11+** | ✅ Full Support | Use Homebrew for dependencies |
+| **Windows WSL2** | ✅ Full Support | WSL2 required, not WSL1 |
+| **RHEL/CentOS 8+** | ✅ Full Support | Use EPEL for some packages |
+| **Alpine Linux** | ✅ Full Support | Excellent for Docker containers |
+
+### CI/CD Platform Support
+
+| Platform | Status | Configuration |
+|----------|--------|---------------|
+| **GitHub Actions** | ✅ Native | Use `ubuntu-latest` runners |
+| **GitLab CI** | ✅ Supported | Use `ubuntu:20.04+` images |
+| **Azure DevOps** | ✅ Supported | Use `ubuntu-latest` agents |
+| **CircleCI** | ✅ Supported | Use `cimg/node:18.19` images |
+| **Jenkins** | ✅ Supported | Ensure dependencies are installed |
+
+### Quick Installation by Platform
+
+#### Ubuntu/Debian
+```bash
+# Install system dependencies
+sudo apt update && sudo apt install curl jq git bc
+
+# Install GitHub CLI
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install gh
+
+# Install Node.js (if not present)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+#### macOS
+```bash
+# Using Homebrew (recommended)
+brew install node gh jq git bc curl
+
+# Verify installation
+node --version && npm --version && gh --version
+```
+
+#### Windows (WSL2)
+```bash
+# First ensure WSL2 is installed, then use Ubuntu instructions
+# Install WSL2: https://docs.microsoft.com/en-us/windows/wsl/install
+
+# In WSL2 Ubuntu terminal:
+sudo apt update && sudo apt install curl jq git bc
+# ... follow Ubuntu GitHub CLI installation steps above
+```
+
+### Docker Quick Start
+
+```dockerfile
+# Minimal container with all dependencies
+FROM node:18.19-alpine
+
+RUN apk add --no-cache bash curl git jq bc github-cli
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+CMD ["./scripts/analyze-performance.sh"]
+```
+
+### Version Migration Guide
+
+#### Upgrading to v2.1.0
+
+If you're upgrading from an earlier version:
+
+1. **Update Node.js**: Ensure Node.js >= 18.0.0
+2. **Update GitHub CLI**: Ensure gh >= 2.0.0
+3. **Review Configuration**: Check for deprecated configuration options
+4. **Test Compatibility**: Run `npm run health-check` to verify setup
+
+#### Breaking Changes in v2.1.0
+
+- **Node.js 16.x support removed** - Upgrade to Node.js 18.0.0+
+- **GitHub CLI v1.x support removed** - Upgrade to gh 2.0.0+
+- **Enhanced configuration validation** - Review and update config files
+
+For comprehensive version compatibility information, including environment-specific configurations and troubleshooting, see the [Configuration Guide](CONFIGURATION.md#version-compatibility).
 
 ## 🔧 Configuration Quick Reference
 

@@ -4,6 +4,7 @@ This comprehensive guide covers all configuration options, environment variables
 
 ## Table of Contents
 
+- [Version Compatibility](#version-compatibility)
 - [Configuration Overview](#configuration-overview)
 - [Configuration Files](#configuration-files)
 - [Environment Variables](#environment-variables)
@@ -18,6 +19,211 @@ This comprehensive guide covers all configuration options, environment variables
     - [Access Control Considerations](#access-control-considerations)
     - [Security Validation and Monitoring](#security-validation-and-monitoring)
 - [Troubleshooting Configuration Issues](#troubleshooting-configuration-issues)
+
+## Version Compatibility
+
+Claude Code Auto Workflows is designed to work across different environments and platforms. This section provides detailed compatibility information for all dependencies and system requirements.
+
+### System Requirements
+
+#### Minimum Requirements
+
+| Component | Minimum Version | Recommended Version | Notes |
+|-----------|----------------|-------------------|-------|
+| **Operating System** | Linux (kernel 3.2+), macOS 10.15+, Windows with WSL2 | Latest LTS versions | Full functionality on Unix-like systems |
+| **Bash** | 4.0+ | 5.0+ | Required for all shell scripts |
+| **Node.js** | 18.0.0 | 18.19.0+ (LTS) | JavaScript runtime for tooling |
+| **npm** | 9.0.0 | 10.2.3+ | Package manager |
+| **Memory** | 2GB RAM | 4GB+ RAM | Higher memory improves parallel processing |
+| **Disk Space** | 1GB free | 2GB+ free | For caching and temporary files |
+
+#### Required Dependencies
+
+| Dependency | Minimum Version | Installation Method | Purpose |
+|------------|----------------|-------------------|---------|
+| **GitHub CLI (gh)** | 2.0.0+ | [GitHub CLI Installation](https://cli.github.com/) | Core GitHub API operations |
+| **jq** | 1.6+ | `apt install jq` / `brew install jq` | JSON processing |
+| **git** | 2.20+ | System package manager | Version control operations |
+| **curl** | 7.0+ | Usually pre-installed | HTTP requests |
+
+#### Optional Dependencies
+
+| Dependency | Purpose | Fallback Behavior |
+|------------|---------|------------------|
+| **bc** | Mathematical calculations | Fallback to shell arithmetic |
+| **sar** | CPU monitoring | Uses alternative tools (vmstat, top) |
+| **vmstat** | Resource monitoring | Uses alternative monitoring tools |
+| **timeout** | Process timeouts | Basic timeout handling |
+| **realpath** | Path resolution | Fallback to relative paths |
+
+### Environment Compatibility Matrix
+
+#### Development Environments
+
+| Environment | Node.js | System Tools | Performance | Recommended Config |
+|-------------|---------|--------------|-------------|-------------------|
+| **Local Development** | 18.19.0+ | All optional tools | Full features | `config/development.conf` |
+| **VS Code Dev Containers** | 18.19.0+ | Pre-configured | Optimized | Built-in configuration |
+| **GitHub Codespaces** | 18.19.0+ | Pre-installed | Cloud-optimized | Automatic detection |
+| **Docker Containers** | 18.19.0+ | Minimal set | Container-optimized | See Docker section |
+
+#### Production Environments
+
+| Environment | Compatibility | Special Considerations |
+|-------------|---------------|----------------------|
+| **Ubuntu 20.04+ LTS** | ✅ Full | Recommended for production |
+| **Ubuntu 18.04 LTS** | ⚠️ Limited | Node.js 18+ requires manual installation |
+| **RHEL/CentOS 8+** | ✅ Full | Use EPEL repository for jq |
+| **Alpine Linux** | ✅ Full | Lightweight, good for containers |
+| **macOS 11+** | ✅ Full | Use Homebrew for dependencies |
+| **Windows WSL2** | ✅ Full | Requires WSL2, not WSL1 |
+
+#### CI/CD Environments
+
+| Platform | Compatibility | Configuration Notes |
+|----------|---------------|-------------------|
+| **GitHub Actions** | ✅ Full | Pre-installed tools, use `ubuntu-latest` |
+| **GitLab CI** | ✅ Full | Use `ubuntu:20.04` or newer images |
+| **Azure DevOps** | ✅ Full | Use `ubuntu-latest` agents |
+| **CircleCI** | ✅ Full | Use `cimg/node:18.19` images |
+| **Jenkins** | ✅ Full | Ensure agent has required dependencies |
+
+### Version-Specific Features
+
+#### Node.js Version Features
+
+| Node.js Version | Features Available | Limitations |
+|----------------|-------------------|-------------|
+| **18.0.0 - 18.12.x** | Basic functionality | Some ES2022 features unavailable |
+| **18.13.0+** | Full feature set | Recommended minimum |
+| **18.19.0+ (LTS)** | Optimized performance | Recommended for production |
+| **20.x** | Enhanced performance | Supported but not required |
+| **21.x+** | Latest features | Not yet tested extensively |
+
+#### GitHub CLI Version Features
+
+| gh Version | API Features | Rate Limit Handling |
+|------------|--------------|-------------------|
+| **2.0.0 - 2.10.x** | Basic API access | Manual rate limiting |
+| **2.11.0+** | Enhanced GraphQL | Improved rate limit detection |
+| **2.20.0+** | Full feature set | Automatic retry handling |
+| **2.40.0+** | Latest features | Recommended version |
+
+### Platform-Specific Considerations
+
+#### Linux Distributions
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install curl jq git bc
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update
+sudo apt install gh
+
+# RHEL/CentOS/Fedora
+sudo dnf install curl jq git bc
+sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+sudo dnf install gh
+
+# Alpine Linux
+apk add curl jq git bc github-cli
+```
+
+#### macOS
+
+```bash
+# Using Homebrew (recommended)
+brew install gh jq git bc curl
+
+# Using MacPorts
+sudo port install github-cli jq git bc curl
+```
+
+#### Windows (WSL2)
+
+```bash
+# Install WSL2 first, then use Ubuntu instructions
+# Ensure WSL2 is running Ubuntu 20.04+ for best compatibility
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+sudo apt update && sudo apt install gh jq git bc curl
+```
+
+### Docker Compatibility
+
+#### Base Images
+
+| Image | Size | Compatibility | Use Case |
+|-------|------|---------------|----------|
+| `node:18.19-alpine` | ~40MB | ✅ Full | Production containers |
+| `node:18.19-slim` | ~80MB | ✅ Full | Balanced size/features |
+| `node:18.19` | ~400MB | ✅ Full | Development containers |
+| `ubuntu:22.04` | ~30MB | ⚠️ Manual setup | Custom builds |
+
+#### Container Configuration
+
+```dockerfile
+# Minimal production container
+FROM node:18.19-alpine
+
+RUN apk add --no-cache \
+    bash \
+    curl \
+    git \
+    jq \
+    bc \
+    github-cli
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+USER 1000:1000
+```
+
+### Compatibility Testing
+
+#### Automated Testing Matrix
+
+```yaml
+# .github/workflows/compatibility.yml
+strategy:
+  matrix:
+    os: [ubuntu-20.04, ubuntu-22.04, macos-11, macos-12]
+    node-version: [18.13.0, 18.19.0, 20.x]
+    include:
+      - os: windows-latest
+        node-version: 18.19.0
+        shell: bash
+```
+
+#### Manual Testing
+
+```bash
+# Test script for compatibility verification
+./scripts/test-compatibility.sh --node-version 18.19.0 --os ubuntu-22.04
+
+# Version check command
+npm run health-check
+```
+
+### Migration Guide
+
+#### Upgrading from v1.x to v2.x
+
+| Component | v1.x Requirement | v2.x Requirement | Migration Notes |
+|-----------|------------------|------------------|----------------|
+| Node.js | 16.x+ | 18.0.0+ | Update Node.js version |
+| GitHub CLI | 1.x | 2.0.0+ | Reinstall GitHub CLI |
+| Configuration | Basic variables | Enhanced validation | Review config files |
+
+#### Breaking Changes
+
+- **Node.js 16.x support removed** in v2.1.0 - Upgrade to Node.js 18.0.0+
+- **Legacy GitHub CLI (v1.x) support removed** - Upgrade to gh 2.0.0+
+- **Configuration validation** now enforces stricter rules
 
 ## Configuration Overview
 
