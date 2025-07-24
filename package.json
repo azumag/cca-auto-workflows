@@ -47,7 +47,7 @@
   },
   "homepage": "https://github.com/azumag/cca-auto-workflows#readme",
   "devDependencies": {
-    "bats-assert": "^2.1.0",
+    "bats-assert": "^2.0.0",
     "bats-support": "^0.3.0",
     "markdownlint-cli": "^0.39.0",
     "markdown-link-check": "^3.12.1",
