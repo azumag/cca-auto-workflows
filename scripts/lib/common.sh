@@ -3,6 +3,10 @@
 # Common functions for Claude Code Auto Workflows scripts
 # This library provides shared functionality to reduce code duplication
 
+# Constants
+readonly SHA256_HASH_LENGTH=64
+readonly DEFAULT_MEMORY_PER_JOB_MB=100
+
 # Configuration loading
 load_config() {
     local config_file="${1:-}"
@@ -524,7 +528,7 @@ calculate_optimal_parallel_jobs() {
     
     # Adjust based on available memory (assume each job needs ~100MB)
     local memory_based_jobs
-    memory_based_jobs=$((available_memory / 100))
+    memory_based_jobs=$((available_memory / DEFAULT_MEMORY_PER_JOB_MB))
     # Ensure minimum of 1 job to prevent division by zero
     if [[ $memory_based_jobs -lt 1 ]]; then
         memory_based_jobs=1
