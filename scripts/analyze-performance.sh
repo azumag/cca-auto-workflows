@@ -5,28 +5,55 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common library
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/lib/common.sh"
 
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $*"
-}
+# Cache configuration
+CACHE_DIR="${TMPDIR:-/tmp}/analyze-performance-cache"
+CACHE_TTL=300  # 5 minutes cache TTL
 
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
-}
-
+# Override log_header for this script's specific purpose
 log_header() {
     echo -e "${BLUE}[ANALYSIS]${NC} $*"
 }
+
+cached_gh_api_call() {
+    local endpoint="$1"
+    local cache_key
+    cache_key=$(get_cache_key "$endpoint")
+    
+    if get_from_cache "$cache_key" "$CACHE_DIR" "$CACHE_TTL"; then
+        return 0
+    fi
+    
+    local result
+    if result=$(gh api "$endpoint" 2>/dev/null); then
+        save_to_cache "$cache_key" "$result" "$CACHE_DIR"
+        echo "$result"
+        return 0
+    fi
+    return 1
+}
+
+cached_gh_run_list() {
+    local args="$*"
+    local cache_key
+    cache_key=$(get_cache_key "run_list_$args")
+    
+    if get_from_cache "$cache_key" "$CACHE_DIR" "$CACHE_TTL"; then
+        return 0
+    fi
+    
+    local result
+    if result=$(gh run list $args 2>/dev/null); then
+        save_to_cache "$cache_key" "$result" "$CACHE_DIR"
+        echo "$result"
+        return 0
+    fi
+    return 1
+}
+
 
 analyze_workflow_runtime() {
     log_header "Analyzing workflow runtime performance..."
@@ -36,9 +63,9 @@ analyze_workflow_runtime() {
         return 1
     fi
     
-    # Get recent workflow runs with timing data
+    # Get recent workflow runs with timing data (with caching)
     local runs_data
-    runs_data=$(gh run list --limit 50 --json name,status,conclusion,createdAt,updatedAt,databaseId 2>/dev/null || echo "[]")
+    runs_data=$(cached_gh_run_list "--limit 50 --json name,status,conclusion,createdAt,updatedAt,databaseId" || echo "[]")
     
     if [[ "$runs_data" == "[]" ]]; then
         log_warn "No workflow run data available"
@@ -79,7 +106,7 @@ analyze_api_usage() {
     fi
     
     local rate_limit_info
-    rate_limit_info=$(gh api rate_limit)
+    rate_limit_info=$(cached_gh_api_call "rate_limit")
     
     local core_used core_limit core_remaining
     core_used=$(echo "$rate_limit_info" | jq -r '.rate.used')
@@ -169,6 +196,12 @@ generate_performance_report() {
 
 main() {
     log_info "📊 Starting performance analysis for Claude Code Auto Workflows..."
+    
+    # Initialize cache and cleanup old entries
+    setup_cache "$CACHE_DIR"
+    cleanup_cache "$CACHE_DIR" "$CACHE_TTL"
+    show_cache_stats "$CACHE_DIR" "data"
+    
     echo
     
     analyze_workflow_runtime
