@@ -63,7 +63,122 @@ For more information, see docs/TROUBLESHOOTING.md
 EOF
 }
 
-# Generate comprehensive analytics dashboard
+# Calculate estimate accuracy metrics
+calculate_accuracy_metrics() {
+    local days_back="$1"
+    local feedback_log="$2"
+    
+    local total_sessions within_estimate significantly_over significantly_under
+    total_sessions=0
+    within_estimate=0
+    significantly_over=0
+    significantly_under=0
+    
+    while IFS=, read -r timestamp session_id step_id outcome duration_min est_range notes; do
+        ((total_sessions++))
+        
+        local min_est_seconds max_est_seconds
+        read min_est_seconds max_est_seconds < <(parse_time_estimate "$est_range")
+        
+        if [[ $min_est_seconds -gt 0 && $max_est_seconds -gt 0 ]]; then
+            local duration_seconds
+            duration_seconds=$(echo "$duration_min * 60" | bc -l | cut -d. -f1)
+            
+            if [[ $duration_seconds -ge $min_est_seconds && $duration_seconds -le $max_est_seconds ]]; then
+                ((within_estimate++))
+            elif [[ $duration_seconds -gt $((max_est_seconds * SIGNIFICANT_MULTIPLIER_OVER)) ]]; then
+                ((significantly_over++))
+            elif [[ $duration_seconds -lt $((min_est_seconds * SIGNIFICANT_MULTIPLIER_UNDER / 1)) ]]; then
+                ((significantly_under++))
+            fi
+        fi
+    done < <(filter_data_by_date "$feedback_log" "$(date -d "${days_back} days ago" '+%Y-%m-%d')")
+    
+    if [[ $total_sessions -gt 0 ]]; then
+        log_header "🎯 Estimate Accuracy Deep Dive"
+        log_info "📈 Estimate Accuracy Summary:"
+        log_info "  🎯 Within estimate range: $within_estimate/$(( total_sessions )) ($(( within_estimate * 100 / total_sessions ))%)"
+        log_info "  🐌 Significantly over (>2x max): $significantly_over ($(( significantly_over * 100 / total_sessions ))%)"
+        log_info "  🚀 Significantly under (<0.5x min): $significantly_under ($(( significantly_under * 100 / total_sessions ))%)"
+    fi
+}
+
+# Analyze difficulty ratings from detailed feedback
+analyze_difficulty_ratings() {
+    local days_back="$1"
+    local detailed_log="$2"
+    
+    if [[ ! -f "$detailed_log" ]]; then
+        return 0
+    fi
+    
+    echo
+    log_header "😓 Difficulty Analysis"
+    
+    local avg_difficulty
+    avg_difficulty=$(awk -F, -v cutoff="$(date -d "${days_back} days ago" '+%Y-%m-%d')" '
+        BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
+        { 
+            ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
+            if (ts >= cutoff_ts && $7 ~ /^[1-5]$/) {
+                sum += $7; count++
+            }
+        } 
+        END { if (count > 0) printf "%.1f", sum/count; else print "0" }' "$detailed_log" 2>/dev/null || echo "0")
+    
+    if [[ "$avg_difficulty" != "0" ]]; then
+        log_info "🎸️  Average difficulty rating: $avg_difficulty/5"
+        
+        # Show most difficult steps
+        log_info "😰 Most Difficult Steps (avg rating ≥4):"
+        awk -F, -v cutoff="$(date -d "${days_back} days ago" '+%Y-%m-%d')" '
+            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
+            { 
+                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
+                if (ts >= cutoff_ts && $7 ~ /^[1-5]$/) {
+                    step_sum[$3] += $7; step_count[$3]++
+                }
+            } 
+            END { 
+                for (step in step_sum) {
+                    avg = step_sum[step] / step_count[step]
+                    if (avg >= 4.0) {
+                        printf "    %-20s: %.1f/5 (%d responses)\n", step, avg, step_count[step]
+                    }
+                }
+            }' "$detailed_log" 2>/dev/null | head -5
+    fi
+}
+
+# Analyze common blockers from detailed feedback
+analyze_common_blockers() {
+    local days_back="$1"
+    local detailed_log="$2"
+    
+    if [[ ! -f "$detailed_log" ]]; then
+        return 0
+    fi
+    
+    echo
+    log_header "🚧 Common Blockers"
+    
+    local blockers
+    blockers=$(awk -F, -v cutoff="$(date -d "${days_back} days ago" '+%Y-%m-%d')" '
+        BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
+        { 
+            ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
+            if (ts >= cutoff_ts && length($8) > 3) print $8
+        }' "$detailed_log" 2>/dev/null | grep -v '^""$' | sort | uniq -c | sort -nr | head -5)
+    
+    if [[ -n "$blockers" ]]; then
+        log_info "Top reported blockers:"
+        echo "$blockers" | while read count blocker; do
+            log_info "  [$count×] ${blocker//\"/}"
+        done
+    fi
+}
+
+# Generate comprehensive analytics dashboard (refactored)
 show_analytics_dashboard() {
     local days_back="${1:-30}"
     
@@ -104,9 +219,9 @@ show_analytics_dashboard() {
             
             if [[ $duration_seconds -ge $min_est_seconds && $duration_seconds -le $max_est_seconds ]]; then
                 ((within_estimate++))
-            elif [[ $duration_seconds -gt $((max_est_seconds * 2)) ]]; then
+            elif [[ $duration_seconds -gt $((max_est_seconds * SIGNIFICANT_MULTIPLIER_OVER)) ]]; then
                 ((significantly_over++))
-            elif [[ $duration_seconds -lt $((min_est_seconds / 2)) ]]; then
+            elif [[ $duration_seconds -lt $((min_est_seconds * SIGNIFICANT_MULTIPLIER_UNDER / 1)) ]]; then
                 ((significantly_under++))
             fi
         fi
@@ -210,7 +325,7 @@ generate_improvement_recommendations() {
         } 
         END { 
             for (step in step_times) {
-                if (step_count[step] >= 3) {  # Only analyze steps with enough data
+                if (step_count[step] >= '"$MIN_SESSIONS_FOR_ANALYSIS"') {
                     print step ":" step_times[step]
                 }
             }
@@ -246,14 +361,14 @@ generate_improvement_recommendations() {
             local adjustment_needed=false
             local recommendation=""
             
-            if [[ $avg_time_seconds -gt $((max_est_seconds + 180)) ]]; then  # 3+ minutes over
+            if [[ $avg_time_seconds -gt $((max_est_seconds + TIME_BUFFER_SECONDS_OVER)) ]]; then
                 local suggested_max
-                suggested_max=$(( (avg_time_seconds + 300) / 60 ))  # Add 5-minute buffer
+                suggested_max=$(( (avg_time_seconds + TIME_BUFFER_SECONDS_ADD) / 60 ))
                 recommendation="Consider increasing estimate to $((min_est_seconds / 60))-${suggested_max} minutes"
                 adjustment_needed=true
-            elif [[ $avg_time_seconds -lt $((min_est_seconds - 120)) ]]; then  # 2+ minutes under
+            elif [[ $avg_time_seconds -lt $((min_est_seconds - TIME_BUFFER_SECONDS_UNDER)) ]]; then
                 local suggested_min
-                suggested_min=$(( (avg_time_seconds - 60) / 60 ))  # Subtract 1-minute buffer
+                suggested_min=$(( (avg_time_seconds - TIME_BUFFER_MINUTES_SUBTRACT) / 60 ))
                 [[ $suggested_min -lt 1 ]] && suggested_min=1
                 recommendation="Consider decreasing estimate to ${suggested_min}-$((max_est_seconds / 60)) minutes"
                 adjustment_needed=true
@@ -287,9 +402,9 @@ generate_improvement_recommendations() {
         } 
         END { 
             for (step in step_total) {
-                if (step_total[step] >= 3) {  # Only analyze steps with enough data
+                if (step_total[step] >= '"$MIN_SESSIONS_FOR_ANALYSIS"') {
                     success_rate = (step_success[step] / step_total[step]) * 100
-                    if (success_rate < 70) {
+                    if (success_rate < '"$LOW_SUCCESS_RATE_THRESHOLD"') {
                         printf "%s:%.0f:%d\n", step, success_rate, step_total[step]
                     }
                 }

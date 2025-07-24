@@ -12,6 +12,17 @@ source "$troubleshooting_feedback_script_dir/performance-metrics.sh"
 FEEDBACK_DIR="${TMPDIR:-/tmp}/troubleshooting-feedback"
 FEEDBACK_RETENTION_DAYS=90
 
+# Thresholds and constants
+EST_ACCURACY_THRESHOLD_PERCENT=60
+TIME_BUFFER_SECONDS_OVER=180
+TIME_BUFFER_SECONDS_ADD=300
+TIME_BUFFER_SECONDS_UNDER=120
+TIME_BUFFER_MINUTES_SUBTRACT=60
+MIN_SESSIONS_FOR_ANALYSIS=3
+SIGNIFICANT_MULTIPLIER_OVER=2
+SIGNIFICANT_MULTIPLIER_UNDER=0.5
+LOW_SUCCESS_RATE_THRESHOLD=70
+
 # Known troubleshooting steps from documentation with their estimated times
 declare -A TROUBLESHOOTING_STEPS=(
     ["range_fix"]="2-5 minutes"
@@ -53,6 +64,29 @@ declare -A TROUBLESHOOTING_STEPS=(
     ["cache_improve"]="25-45 minutes"
     ["cache_fix"]="10-25 minutes"
 )
+
+# Filter data by date using awk (DRY helper function)
+filter_data_by_date() {
+    local input_file="$1"
+    local cutoff_date="$2"
+    local step_filter="${3:-*}"
+    
+    if [[ "$step_filter" == "*" ]]; then
+        awk -F, -v cutoff="$cutoff_date" '
+            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
+            { 
+                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
+                if (ts >= cutoff_ts) print $0
+            }' "$input_file"
+    else
+        awk -F, -v cutoff="$cutoff_date" -v step="$step_filter" '
+            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
+            { 
+                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
+                if (ts >= cutoff_ts && $3 == step) print $0
+            }' "$input_file"
+    fi
+}
 
 # Initialize troubleshooting feedback module
 troubleshooting_feedback_init() {
@@ -102,17 +136,24 @@ start_troubleshooting_session() {
     local session_id="troubleshooting_${step_id}_$(date +%s)"
     local session_file="${FEEDBACK_DIR}/${session_id}.session"
     
-    cat > "$session_file" << EOF
-{
-    "session_id": "$session_id",
-    "step_id": "$step_id",
-    "description": "$description",
-    "estimated_time_range": "${TROUBLESHOOTING_STEPS[$step_id]}",
-    "start_time": "$(date -Iseconds)",
-    "start_timestamp": $(date +%s.%N),
-    "status": "in_progress"
-}
-EOF
+    # Create session file using jq to properly escape JSON values
+    jq -n \
+        --arg session_id "$session_id" \
+        --arg step_id "$step_id" \
+        --arg description "$description" \
+        --arg estimated_time_range "${TROUBLESHOOTING_STEPS[$step_id]}" \
+        --arg start_time "$(date -Iseconds)" \
+        --argjson start_timestamp "$(date +%s.%N)" \
+        --arg status "in_progress" \
+        '{
+            "session_id": $session_id,
+            "step_id": $step_id,
+            "description": $description,
+            "estimated_time_range": $estimated_time_range,
+            "start_time": $start_time,
+            "start_timestamp": $start_timestamp,
+            "status": $status
+        }' > "$session_file"
     
     local estimated_range="${TROUBLESHOOTING_STEPS[$step_id]}"
     log_info "🚀 Started troubleshooting session: $session_id"
@@ -278,39 +319,10 @@ generate_feedback_report() {
     fi
 }
 
-# Generate console format feedback report
-generate_console_feedback_report() {
-    local step_filter="$1"
-    local cutoff_date="$2"
-    local feedback_log="${FEEDBACK_DIR}/feedback.log"
+# Display overall statistics for feedback data
+display_overall_statistics() {
+    local filtered_data="$1"
     
-    log_header "📊 Troubleshooting Feedback Report (Last 30 days)"
-    echo
-    
-    # Filter data by date and step
-    local filtered_data
-    if [[ "$step_filter" == "*" ]]; then
-        filtered_data=$(awk -F, -v cutoff="$cutoff_date" '
-            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-            { 
-                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-                if (ts >= cutoff_ts) print $0
-            }' "$feedback_log")
-    else
-        filtered_data=$(awk -F, -v cutoff="$cutoff_date" -v step="$step_filter" '
-            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-            { 
-                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-                if (ts >= cutoff_ts && $3 == step) print $0
-            }' "$feedback_log")
-    fi
-    
-    if [[ -z "$filtered_data" ]]; then
-        log_info "No feedback data found for the specified criteria"
-        return 0
-    fi
-    
-    # Overall statistics
     local total_sessions successful_sessions
     total_sessions=$(echo "$filtered_data" | wc -l)
     successful_sessions=$(echo "$filtered_data" | grep -c ",success," || echo 0)
@@ -320,11 +332,53 @@ generate_console_feedback_report() {
     log_info "  ✅ Successful sessions: $successful_sessions ($(( successful_sessions * 100 / total_sessions ))%)"
     log_info "  ❌ Failed sessions: $(( total_sessions - successful_sessions )) ($(( (total_sessions - successful_sessions) * 100 / total_sessions ))%)"
     echo
+}
+
+# Analyze time accuracy for a specific step
+analyze_step_time_accuracy() {
+    local step_data="$1"
+    local estimated_range="$2"
+    local step_total="$3"
     
-    # Step-by-step analysis
+    if [[ "$estimated_range" == "Unknown" ]]; then
+        return 0
+    fi
+    
+    local min_est_seconds max_est_seconds
+    read min_est_seconds max_est_seconds < <(parse_time_estimate "$estimated_range")
+    
+    if [[ $min_est_seconds -gt 0 && $max_est_seconds -gt 0 ]]; then
+        local within_range under_range over_range
+        within_range=0
+        under_range=0
+        over_range=0
+        
+        while IFS=, read -r timestamp session_id step_id outcome duration_min est_range notes; do
+            local duration_seconds
+            duration_seconds=$(echo "$duration_min * 60" | bc -l | cut -d. -f1)
+            
+            if [[ $duration_seconds -lt $min_est_seconds ]]; then
+                ((under_range++))
+            elif [[ $duration_seconds -gt $max_est_seconds ]]; then
+                ((over_range++))
+            else
+                ((within_range++))
+            fi
+        done <<< "$step_data"
+        
+        printf "    📊 Time Accuracy: Within range %d%% | Under %d%% | Over %d%%\n" \
+            "$(( within_range * 100 / step_total ))" \
+            "$(( under_range * 100 / step_total ))" \
+            "$(( over_range * 100 / step_total ))"
+    fi
+}
+
+# Display step-by-step analysis
+display_step_analysis() {
+    local filtered_data="$1"
+    
     log_info "🔍 Step-by-Step Analysis:"
     
-    # Get unique steps from filtered data
     local steps
     steps=$(echo "$filtered_data" | cut -d, -f3 | sort | uniq)
     
@@ -345,44 +399,20 @@ generate_console_feedback_report() {
         printf "  %-20s | Sessions: %2d | Success: %3d%% | Avg Time: %5.1f min | Estimated: %s\n" \
             "$step" "$step_total" "$(( step_successful * 100 / step_total ))" "$step_avg_time" "$estimated_range"
         
-        # Time accuracy analysis
-        if [[ "$estimated_range" != "Unknown" ]]; then
-            local min_est_seconds max_est_seconds
-            read min_est_seconds max_est_seconds < <(parse_time_estimate "$estimated_range")
-            
-            if [[ $min_est_seconds -gt 0 && $max_est_seconds -gt 0 ]]; then
-                local within_range under_range over_range
-                within_range=0
-                under_range=0
-                over_range=0
-                
-                while IFS=, read -r timestamp session_id step_id outcome duration_min est_range notes; do
-                    local duration_seconds
-                    duration_seconds=$(echo "$duration_min * 60" | bc -l | cut -d. -f1)
-                    
-                    if [[ $duration_seconds -lt $min_est_seconds ]]; then
-                        ((under_range++))
-                    elif [[ $duration_seconds -gt $max_est_seconds ]]; then
-                        ((over_range++))
-                    else
-                        ((within_range++))
-                    fi
-                done <<< "$step_data"
-                
-                local total=$step_total
-                printf "    📊 Time Accuracy: Within range %d%% | Under %d%% | Over %d%%\n" \
-                    "$(( within_range * 100 / total ))" \
-                    "$(( under_range * 100 / total ))" \
-                    "$(( over_range * 100 / total ))"
-            fi
-        fi
+        analyze_step_time_accuracy "$step_data" "$estimated_range" "$step_total"
         echo
     done <<< "$steps"
+}
+
+# Generate estimate adjustment recommendations
+generate_estimate_recommendations() {
+    local filtered_data="$1"
     
-    # Recommendations
     log_info "💡 Recommendations:"
     
-    # Find steps with consistently poor time estimates
+    local steps
+    steps=$(echo "$filtered_data" | cut -d, -f3 | sort | uniq)
+    
     while IFS= read -r step; do
         [[ -z "$step" ]] && continue
         
@@ -392,7 +422,7 @@ generate_console_feedback_report() {
         step_total=$(echo "$step_data" | wc -l)
         
         # Only analyze steps with enough data
-        if [[ $step_total -ge 3 ]]; then
+        if [[ $step_total -ge $MIN_SESSIONS_FOR_ANALYSIS ]]; then
             local estimated_range
             estimated_range="${TROUBLESHOOTING_STEPS[$step]:-Unknown}"
             
@@ -413,8 +443,8 @@ generate_console_feedback_report() {
                         fi
                     done <<< "$step_data"
                     
-                    # If more than 60% of sessions exceed the estimate, recommend adjustment
-                    if [[ $(( over_count * 100 / step_total )) -gt 60 ]]; then
+                    # If more than threshold% of sessions exceed the estimate, recommend adjustment
+                    if [[ $(( over_count * 100 / step_total )) -gt $EST_ACCURACY_THRESHOLD_PERCENT ]]; then
                         local avg_time
                         avg_time=$(echo "$step_data" | cut -d, -f5 | awk '{sum+=$1; count++} END {if(count>0) printf "%.0f", sum/count; else print "0"}')
                         log_info "  ⚠️  Consider increasing estimate for '$step' to ~$((avg_time + 5)) minutes (currently $estimated_range)"
@@ -425,29 +455,38 @@ generate_console_feedback_report() {
     done <<< "$steps"
 }
 
+# Generate console format feedback report (refactored)
+generate_console_feedback_report() {
+    local step_filter="$1"
+    local cutoff_date="$2"
+    local feedback_log="${FEEDBACK_DIR}/feedback.log"
+    
+    log_header "📊 Troubleshooting Feedback Report (Last 30 days)"
+    echo
+    
+    # Filter data by date and step using helper function
+    local filtered_data
+    filtered_data=$(filter_data_by_date "$feedback_log" "$cutoff_date" "$step_filter")
+    
+    if [[ -z "$filtered_data" ]]; then
+        log_info "No feedback data found for the specified criteria"
+        return 0
+    fi
+    
+    display_overall_statistics "$filtered_data"
+    display_step_analysis "$filtered_data"
+    generate_estimate_recommendations "$filtered_data"
+}
+
 # Generate JSON format feedback report
 generate_json_feedback_report() {
     local step_filter="$1"
     local cutoff_date="$2"
     local feedback_log="${FEEDBACK_DIR}/feedback.log"
     
-    # Filter and process data similar to console report but output as JSON
+    # Filter and process data using helper function
     local filtered_data
-    if [[ "$step_filter" == "*" ]]; then
-        filtered_data=$(awk -F, -v cutoff="$cutoff_date" '
-            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-            { 
-                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-                if (ts >= cutoff_ts) print $0
-            }' "$feedback_log")
-    else
-        filtered_data=$(awk -F, -v cutoff="$cutoff_date" -v step="$step_filter" '
-            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-            { 
-                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-                if (ts >= cutoff_ts && $3 == step) print $0
-            }' "$feedback_log")
-    fi
+    filtered_data=$(filter_data_by_date "$feedback_log" "$cutoff_date" "$step_filter")
     
     # Generate JSON output
     cat << EOF
