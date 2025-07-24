@@ -29,21 +29,21 @@ flowchart TD
     IDENTIFY -->|Cache Issues| CACHE_CHECK{Check Cache Performance}
     
     %% API Usage Path
-    API_CHECK -->|Rate Limited| API_SOLUTIONS[Increase Cache TTL<br/>Use GitHub App Token<br/>Reduce Request Rate]
-    API_CHECK -->|High Usage| API_OPTIMIZE[Enable Request Batching<br/>Optimize API Calls<br/>Implement Intelligent Scheduling]
+    API_CHECK -->|Rate Limited| API_SOLUTIONS[Increase Cache TTL<br/>Use GitHub App Token<br/>Reduce Request Rate<br/><br/>**Example**: "Error: API rate limit exceeded (5000/5000)"<br/>→ Using PAT with 5000/hour limit<br/>→ Solution: Switch to GitHub App token (15,000/hour)<br/><br/>**Example**: 2GB RAM system hitting rate limits frequently<br/>→ Short CACHE_TTL=300 causing excessive API calls<br/>→ Solution: Increase CACHE_TTL=1800 for better caching]
+    API_CHECK -->|High Usage| API_OPTIMIZE[Enable Request Batching<br/>Optimize API Calls<br/>Implement Intelligent Scheduling<br/><br/>**Example**: 3000+ API calls for 50 workflow runs<br/>→ Making individual calls for each workflow detail<br/>→ Solution: Use GraphQL to batch workflow queries<br/><br/>**Example**: Peak usage times causing failures<br/>→ Multiple repositories using same token during CI<br/>→ Solution: Stagger cron schedules (0 7 * * * vs 0 */6 * * *)]
     
     %% Execution Performance Path
-    EXECUTION_CHECK -->|High CPU| CPU_OPTIMIZE[Adjust Parallel Jobs<br/>Optimize Process Affinity<br/>Use Process Priority]
-    EXECUTION_CHECK -->|High I/O Wait| IO_OPTIMIZE[Use Faster Storage<br/>Optimize Cache Location<br/>Clean Temp Files]
-    EXECUTION_CHECK -->|Network Latency| NETWORK_OPTIMIZE[Increase Cache TTL<br/>Use Local Mirror<br/>Batch Network Requests]
+    EXECUTION_CHECK -->|High CPU| CPU_OPTIMIZE[Adjust Parallel Jobs<br/>Optimize Process Affinity<br/>Use Process Priority<br/><br/>**Example**: 100% CPU usage on 4-core system<br/>→ MAX_PARALLEL_JOBS=16 causing excessive context switching<br/>→ Solution: Set MAX_PARALLEL_JOBS=4 to match CPU cores<br/><br/>**Example**: System becomes unresponsive during analysis<br/>→ Analysis process competing with other services<br/>→ Solution: Use nice -n 10 to lower process priority]
+    EXECUTION_CHECK -->|High I/O Wait| IO_OPTIMIZE[Use Faster Storage<br/>Optimize Cache Location<br/>Clean Temp Files<br/><br/>**Example**: Analysis takes 20+ minutes with high iowait<br/>→ Cache directory on slow HDD with frequent writes<br/>→ Solution: Move cache to SSD or RAM disk (/dev/shm)<br/><br/>**Example**: Disk space errors during large analysis<br/>→ /tmp filling up with 2GB+ of temporary files<br/>→ Solution: Clean old files: find /tmp -name "*.tmp.*" -mmin +60 -delete]
+    EXECUTION_CHECK -->|Network Latency| NETWORK_OPTIMIZE[Increase Cache TTL<br/>Use Local Mirror<br/>Batch Network Requests<br/><br/>**Example**: API calls taking 2+ seconds each<br/>→ High latency connection to GitHub API<br/>→ Solution: Increase CACHE_TTL=3600 to reduce API frequency<br/><br/>**Example**: Timeouts in corporate network<br/>→ Firewall/proxy adding latency to GitHub API<br/>→ Solution: Configure proxy settings or use GitHub Enterprise]
     
     %% Memory Issues Path
-    MEMORY_CHECK -->|Out of Memory| MEMORY_SOLUTIONS[Reduce Parallel Jobs<br/>Use Streaming Processing<br/>Clean Temp Files]
-    MEMORY_CHECK -->|Memory Leaks| MEMORY_DEBUG[Run Memory Profiling<br/>Check for Resource Leaks<br/>Implement Cleanup Functions]
+    MEMORY_CHECK -->|Out of Memory| MEMORY_SOLUTIONS[Reduce Parallel Jobs<br/>Use Streaming Processing<br/>Clean Temp Files<br/><br/>**Example**: "Killed" message with 4GB system<br/>→ MAX_PARALLEL_JOBS=8 consuming 6GB+ RAM<br/>→ Solution: Reduce to MAX_PARALLEL_JOBS=2<br/><br/>**Example**: GitHub Actions runner out of memory<br/>→ Processing 1000+ workflow runs simultaneously<br/>→ Solution: Set WORKFLOW_ANALYSIS_LIMIT=25 to process in batches]
+    MEMORY_CHECK -->|Memory Leaks| MEMORY_DEBUG[Run Memory Profiling<br/>Check for Resource Leaks<br/>Implement Cleanup Functions<br/><br/>**Example**: Memory usage grows from 500MB to 4GB<br/>→ Cache files not being cleaned up properly<br/>→ Solution: Implement proper cache cleanup with TTL enforcement<br/><br/>**Example**: Processes not terminating after script ends<br/>→ Background processes left running consuming memory<br/>→ Solution: Add proper signal handling and cleanup traps]
     
     %% Cache Performance Path
-    CACHE_CHECK -->|Low Hit Rate| CACHE_IMPROVE[Optimize Cache Keys<br/>Pre-warm Cache<br/>Adjust Cache Strategy]
-    CACHE_CHECK -->|Cache Corruption| CACHE_FIX[Clear Cache Directory<br/>Fix Atomic Operations<br/>Check Permissions]
+    CACHE_CHECK -->|Low Hit Rate| CACHE_IMPROVE[Optimize Cache Keys<br/>Pre-warm Cache<br/>Adjust Cache Strategy<br/><br/>**Example**: Cache hit rate < 30% on repeated runs<br/>→ Cache keys include timestamps causing misses<br/>→ Solution: Use stable parameters for cache key generation<br/><br/>**Example**: Fresh repository analysis always misses cache<br/>→ No pre-warming for common GitHub API endpoints<br/>→ Solution: Run pre-warm script before main analysis]
+    CACHE_CHECK -->|Cache Corruption| CACHE_FIX[Clear Cache Directory<br/>Fix Atomic Operations<br/>Check Permissions<br/><br/>**Example**: "Invalid JSON" errors from cache reads<br/>→ Parallel processes corrupting cache files<br/>→ Solution: Implement atomic writes with temporary files<br/><br/>**Example**: Cache files owned by root, script runs as user<br/>→ Permission denied errors when accessing cache<br/>→ Solution: chown -R $USER:$USER /tmp/github-api-cache]
     
     %% Solution Validation
     API_SOLUTIONS --> VALIDATE{Test Performance}
@@ -709,10 +709,10 @@ flowchart TD
     SYMPTOMS -->|Inconsistent Results| CONSISTENCY_PATH{Check data consistency}
     
     %% Error Path
-    ERROR_PATH -->|Rate Limit 429| RATE_LIMIT[Check: gh api rate_limit<br/>Solution: Increase cache TTL<br/>Use GitHub App token]
-    ERROR_PATH -->|Timeout Errors| TIMEOUT[Check: Network latency<br/>Solution: Increase timeouts<br/>Optimize requests]
-    ERROR_PATH -->|Permission Errors| PERMISSION[Check: Token permissions<br/>Solution: Update token scope<br/>Verify repository access]
-    ERROR_PATH -->|Cache Errors| CACHE_ERROR[Check: Cache directory permissions<br/>Solution: Clear cache<br/>Fix atomic operations]
+    ERROR_PATH -->|Rate Limit 429| RATE_LIMIT[Check: gh api rate_limit<br/>Solution: Increase cache TTL<br/>Use GitHub App token<br/><br/>**Example**: "Rate limit exceeded: 5000/5000 requests used"<br/>→ PAT hitting hourly limit during peak usage<br/>→ Solution: Switch to GitHub App token (15,000/hour limit)<br/><br/>**Example**: Multiple repositories sharing same token<br/>→ Combined usage exceeding rate limit<br/>→ Solution: Create dedicated tokens per repository]
+    ERROR_PATH -->|Timeout Errors| TIMEOUT[Check: Network latency<br/>Solution: Increase timeouts<br/>Optimize requests<br/><br/>**Example**: "Request timeout after 30 seconds"<br/>→ Corporate firewall/proxy causing delays<br/>→ Solution: Configure HTTP_PROXY and increase timeout<br/><br/>**Example**: Large repository analysis timing out<br/>→ GitHub API calls for 500+ workflow runs taking too long<br/>→ Solution: Reduce WORKFLOW_ANALYSIS_LIMIT to 50]
+    ERROR_PATH -->|Permission Errors| PERMISSION[Check: Token permissions<br/>Solution: Update token scope<br/>Verify repository access<br/><br/>**Example**: "Error 403: Resource not accessible by token"<br/>→ PAT missing 'repo' scope for private repository<br/>→ Solution: Regenerate token with full 'repo' scope<br/><br/>**Example**: "Error 404: Not Found" on valid repository<br/>→ Token doesn't have access to organization repository<br/>→ Solution: Request access or use organization token]
+    ERROR_PATH -->|Cache Errors| CACHE_ERROR[Check: Cache directory permissions<br/>Solution: Clear cache<br/>Fix atomic operations<br/><br/>**Example**: "Permission denied: /tmp/github-api-cache"<br/>→ Cache directory created by root, script runs as user<br/>→ Solution: sudo chown -R $USER:$USER /tmp/github-api-cache<br/><br/>**Example**: "Invalid JSON in cache file"<br/>→ Parallel processes writing to same cache file<br/>→ Solution: Implement file locking or reduce parallelism]
     
     %% Performance Path
     SLOW_PATH -->|>5 minutes| VERY_SLOW{Is analysis limit high?}
