@@ -9,13 +9,17 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/lib/common.sh"
 
+# Load configuration
+load_config "${CONFIG_FILE:-}"
+
+# Setup signal handling
+setup_signal_handling
+
 ERRORS=0
 WARNINGS=0
 
-# Performance configuration
-MAX_PARALLEL_JOBS=4  # Number of parallel validation jobs
-CACHE_DIR="${TMPDIR:-/tmp}/validate-workflows-cache"
-CACHE_TTL=1800  # 30 minutes cache TTL
+# Cache configuration (can be overridden by config file or environment)
+CACHE_DIR="${CACHE_DIR:-${TMPDIR:-/tmp}/validate-workflows-cache}"
 
 # Override log functions to track errors/warnings
 log_warn() {
@@ -32,11 +36,20 @@ log_header() {
     echo -e "${BLUE}[VALIDATION]${NC} $*"
 }
 
+# Helper function to get the workflow directory
+get_workflow_directory() {
+    # Find repository root by looking for .git directory
+    local repo_root="$script_dir"
+    while [[ "$repo_root" != "/" && ! -d "$repo_root/.git" ]]; do
+        repo_root="$(dirname "$repo_root")"
+    done
+    
+    echo "$repo_root/.github/workflows"
+}
+
 get_validation_cache_key() {
     local file="$1"
-    local file_hash
-    file_hash=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)
-    echo "${file_hash}_$(stat -c %Y "$file" 2>/dev/null || echo 0)"
+    get_enhanced_cache_key "$file" "validation"
 }
 
 get_validation_from_cache() {
@@ -225,20 +238,44 @@ validate_github_actions_basic() {
     return $errors
 }
 
-parallel_validate_workflows() {
-    log_header "Validating workflows in parallel..."
+# Wrapper function to process validation results and update counters
+process_validation_result() {
+    local file="$1"
+    local result
+    result=$(validate_single_file "$file")
     
-    local workflow_dir=".github/workflows"
+    local output errors warnings
+    IFS='|' read -r output errors warnings <<< "$result"
+    
+    # Use a lock file to prevent race conditions when updating counters
+    local lock_file="/tmp/validate_workflows_$$.lock"
+    (
+        flock -x 200
+        echo -e "$output"
+        ERRORS=$((ERRORS + errors))
+        WARNINGS=$((WARNINGS + warnings))
+        # Store counters in temporary files for the parent process to read
+        echo "$ERRORS" > "/tmp/validate_errors_$$"
+        echo "$WARNINGS" > "/tmp/validate_warnings_$$"
+    ) 200>"$lock_file"
+}
+
+parallel_validate_workflows() {
+    log_header "Validating workflows in parallel using xargs..."
+    
+    local workflow_dir
+    workflow_dir=$(get_workflow_directory)
+    
     if [[ ! -d "$workflow_dir" ]]; then
         log_error "Workflow directory not found: $workflow_dir"
         return 1
     fi
     
-    # Get all workflow files
+    # Get all workflow files using a simpler approach
     local workflow_files=()
-    while IFS= read -r -d '' file; do
-        workflow_files+=("$file")
-    done < <(find "$workflow_dir" -name "*.yml" -o -name "*.yaml" -print0)
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && workflow_files+=("$file")
+    done < <(find "$workflow_dir" -name "*.yml" -o -name "*.yaml")
     
     local total_files=${#workflow_files[@]}
     if [[ $total_files -eq 0 ]]; then
@@ -248,60 +285,26 @@ parallel_validate_workflows() {
     
     log_info "Processing $total_files workflow files with up to $MAX_PARALLEL_JOBS parallel jobs..."
     
-    # Process files in parallel batches
-    local batch_size=$MAX_PARALLEL_JOBS
-    local file_index=0
+    # Initialize counter files
+    echo "0" > "/tmp/validate_errors_$$"
+    echo "0" > "/tmp/validate_warnings_$$"
     
-    while [[ $file_index -lt $total_files ]]; do
-        local pids=()
-        local temp_files=()
-        
-        # Start a batch of parallel validations
-        for ((i=0; i<batch_size && file_index<total_files; i++)); do
-            local file="${workflow_files[$file_index]}"
-            local temp_file
-            temp_file=$(mktemp)
-            temp_files+=("$temp_file")
-            
-            # Run validation in background with secure temp file
-            chmod 600 "$temp_file"
-            validate_single_file "$file" > "$temp_file" 2>&1 &
-            pids+=($!)
-            
-            ((file_index++))
-        done
-        
-        # Wait for all jobs in this batch to complete with error handling
-        local failed_jobs=0
-        for ((i=0; i<${#pids[@]}; i++)); do
-            if ! wait "${pids[$i]}"; then
-                log_error "Validation job failed for PID ${pids[$i]}"
-                ((failed_jobs++))
-            fi
-            
-            # Process results
-            local result
-            result=$(cat "${temp_files[$i]}")
-            local output errors warnings
-            IFS='|' read -r output errors warnings <<< "$result"
-            
-            # Print output and update counters
-            echo -e "$output"
-            ERRORS=$((ERRORS + errors))
-            WARNINGS=$((WARNINGS + warnings))
-            
-            # Clean up temp file securely
-            rm -f "${temp_files[$i]}"
-        done
-        
-        if [[ $failed_jobs -gt 0 ]]; then
-            log_warn "$failed_jobs validation jobs failed in this batch"
-        fi
-        
-        # Show progress
-        local processed=$((file_index > total_files ? total_files : file_index))
-        log_info "Progress: $processed/$total_files files processed"
-    done
+    # Export necessary functions and variables for xargs
+    export -f validate_single_file get_validation_cache_key get_validation_from_cache save_validation_to_cache
+    export -f validate_github_actions_schema validate_github_actions_basic process_validation_result
+    export -f get_enhanced_cache_key setup_cache save_to_cache get_from_cache is_cache_valid
+    export -f log_info log_warn log_error log_header
+    export CACHE_DIR CACHE_TTL RED YELLOW GREEN BLUE NC ERRORS WARNINGS
+    
+    # Use simplified parallel processing
+    printf '%s\0' "${workflow_files[@]}" | xargs -0 -P "$MAX_PARALLEL_JOBS" -I {} bash -c 'process_validation_result "$1"' _ {}
+    
+    # Read final counters
+    ERRORS=$(cat "/tmp/validate_errors_$$" 2>/dev/null || echo 0)
+    WARNINGS=$(cat "/tmp/validate_warnings_$$" 2>/dev/null || echo 0)
+    
+    # Clean up temporary files
+    rm -f "/tmp/validate_errors_$$" "/tmp/validate_warnings_$$" "/tmp/validate_workflows_$$.lock"
     
     if [[ $ERRORS -eq 0 && $WARNINGS -eq 0 ]]; then
         log_info "✅ All workflow files passed validation"
@@ -313,7 +316,8 @@ parallel_validate_workflows() {
 check_yaml_syntax() {
     log_header "Checking YAML syntax..."
     
-    local workflow_dir=".github/workflows"
+    local workflow_dir
+    workflow_dir=$(get_workflow_directory)
     if [[ ! -d "$workflow_dir" ]]; then
         log_error "Workflow directory not found: $workflow_dir"
         return 1
@@ -363,7 +367,8 @@ check_yaml_syntax() {
 check_required_fields() {
     log_header "Checking required workflow fields..."
     
-    local workflow_dir=".github/workflows"
+    local workflow_dir
+    workflow_dir=$(get_workflow_directory)
     
     while IFS= read -r -d '' file; do
         local filename
@@ -388,7 +393,8 @@ check_required_fields() {
 check_security_best_practices() {
     log_header "Checking security best practices..."
     
-    local workflow_dir=".github/workflows"
+    local workflow_dir
+    workflow_dir=$(get_workflow_directory)
     
     while IFS= read -r -d '' file; do
         local filename
@@ -422,7 +428,8 @@ check_security_best_practices() {
 check_performance_optimizations() {
     log_header "Checking performance optimizations..."
     
-    local workflow_dir=".github/workflows"
+    local workflow_dir
+    workflow_dir=$(get_workflow_directory)
     
     while IFS= read -r -d '' file; do
         local filename
@@ -457,7 +464,8 @@ check_performance_optimizations() {
 check_workflow_naming() {
     log_header "Checking workflow naming conventions..."
     
-    local workflow_dir=".github/workflows"
+    local workflow_dir
+    workflow_dir=$(get_workflow_directory)
     
     while IFS= read -r -d '' file; do
         local filename
@@ -480,7 +488,8 @@ check_workflow_naming() {
 check_dependencies() {
     log_header "Checking workflow dependencies..."
     
-    local workflow_dir=".github/workflows"
+    local workflow_dir
+    workflow_dir=$(get_workflow_directory)
     local used_actions=()
     
     # Extract all used actions
@@ -507,6 +516,19 @@ check_dependencies() {
                 ;;
         esac
     done
+}
+
+# Cleanup function for graceful shutdown
+cleanup_validation() {
+    log_info "Cleaning up validation resources..."
+    
+    # Clean up temporary files
+    rm -f "/tmp/validate_errors_$$" "/tmp/validate_warnings_$$" "/tmp/validate_workflows_$$.lock" 2>/dev/null || true
+    
+    # Clean up cache if needed
+    if [[ -n "${CACHE_DIR:-}" ]]; then
+        cleanup_cache "$CACHE_DIR" "$CACHE_TTL"
+    fi
 }
 
 generate_summary() {
@@ -537,6 +559,9 @@ generate_summary() {
 main() {
     log_info "🔍 Starting workflow validation for Claude Code Auto Workflows..."
     
+    # Register cleanup function for graceful shutdown
+    add_cleanup_function cleanup_validation
+    
     # Initialize cache and cleanup old entries
     setup_cache "$CACHE_DIR"
     cleanup_cache "$CACHE_DIR" "$CACHE_TTL"
@@ -546,18 +571,35 @@ main() {
     
     echo
     
-    # Use parallel validation instead of sequential
-    parallel_validate_workflows
+    # Check if caching is enabled
+    if [[ "${ENABLE_CACHE:-true}" == "true" ]]; then
+        # Use parallel validation instead of sequential
+        parallel_validate_workflows
+    else
+        log_info "Cache disabled, running sequential validation..."
+        local workflow_dir
+        workflow_dir=$(get_workflow_directory)
+        while IFS= read -r -d '' file; do
+            validate_single_file "$file" | head -1
+        done < <(find "$workflow_dir" -name "*.yml" -o -name "*.yaml" -print0)
+    fi
     echo
     
-    check_required_fields
-    echo
+    # Run optional checks based on configuration
+    if [[ "${VALIDATE_SCHEMA:-true}" == "true" ]]; then
+        check_required_fields
+        echo
+    fi
     
-    check_security_best_practices
-    echo
+    if [[ "${CHECK_SECURITY:-true}" == "true" ]]; then
+        check_security_best_practices
+        echo
+    fi
     
-    check_performance_optimizations
-    echo
+    if [[ "${CHECK_PERFORMANCE:-true}" == "true" ]]; then
+        check_performance_optimizations
+        echo
+    fi
     
     check_workflow_naming
     echo
@@ -566,6 +608,9 @@ main() {
     echo
     
     generate_summary
+    
+    # Clean up resources
+    cleanup_validation
     
     # Return appropriate exit code
     if [[ $ERRORS -gt 0 ]]; then

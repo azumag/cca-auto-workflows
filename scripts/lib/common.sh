@@ -3,6 +3,100 @@
 # Common functions for Claude Code Auto Workflows scripts
 # This library provides shared functionality to reduce code duplication
 
+# Configuration loading
+load_config() {
+    local config_file="${1:-}"
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
+    local default_config="$script_dir/config/default.conf"
+    
+    # Load default configuration first
+    if [[ -f "$default_config" ]]; then
+        source "$default_config"
+    fi
+    
+    # Load custom config if specified
+    if [[ -n "$config_file" && -f "$config_file" ]]; then
+        source "$config_file"
+    fi
+    
+    # Validate required configuration
+    validate_config
+}
+
+validate_config() {
+    # Validate numeric values
+    if [[ ! "$MAX_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$MAX_PARALLEL_JOBS" -lt 1 ]]; then
+        log_error "Invalid MAX_PARALLEL_JOBS value: $MAX_PARALLEL_JOBS"
+        return 1
+    fi
+    
+    if [[ ! "$CACHE_TTL" =~ ^[0-9]+$ ]] || [[ "$CACHE_TTL" -lt 60 ]]; then
+        log_error "Invalid CACHE_TTL value: $CACHE_TTL (minimum 60 seconds)"
+        return 1
+    fi
+    
+    # Validate boolean values
+    case "$ENABLE_CACHE" in
+        true|false) ;;
+        *) log_error "Invalid ENABLE_CACHE value: $ENABLE_CACHE (must be true or false)"; return 1 ;;
+    esac
+}
+
+# Signal handling for graceful shutdown
+CLEANUP_FUNCTIONS=()
+INTERRUPTED=false
+
+add_cleanup_function() {
+    CLEANUP_FUNCTIONS+=("$1")
+}
+
+cleanup_and_exit() {
+    local exit_code=${1:-130}
+    INTERRUPTED=true
+    
+    log_warn "Received interrupt signal, cleaning up..."
+    
+    # Run cleanup functions in reverse order
+    for ((i=${#CLEANUP_FUNCTIONS[@]}-1; i>=0; i--)); do
+        local cleanup_func="${CLEANUP_FUNCTIONS[i]}"
+        if declare -F "$cleanup_func" > /dev/null; then
+            log_info "Running cleanup: $cleanup_func"
+            "$cleanup_func" || log_warn "Cleanup function $cleanup_func failed"
+        fi
+    done
+    
+    log_info "Cleanup completed, exiting..."
+    exit $exit_code
+}
+
+setup_signal_handling() {
+    trap 'cleanup_and_exit 130' SIGINT
+    trap 'cleanup_and_exit 143' SIGTERM
+}
+
+# Improved cache key generation with full file paths and content checksums
+get_enhanced_cache_key() {
+    local file="$1"
+    local additional_context="${2:-}"
+    
+    # Get absolute path to avoid collisions with same filenames in different directories
+    local abs_path
+    abs_path=$(realpath "$file" 2>/dev/null || echo "$file")
+    
+    # Get file content hash
+    local content_hash
+    content_hash=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)
+    
+    # Get file modification time
+    local mtime
+    mtime=$(stat -c %Y "$file" 2>/dev/null || echo 0)
+    
+    # Combine path, content, modification time, and additional context
+    local combined="${abs_path}:${content_hash}:${mtime}:${additional_context}"
+    echo -n "$combined" | sha256sum | cut -d' ' -f1
+}
+
 # Colors for output
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -109,6 +203,37 @@ show_cache_stats() {
             log_info "💾 Using cached ${label:-data} ($cache_files cached entries)"
         fi
     fi
+}
+
+# Simplified parallel processing using xargs -P
+run_parallel_function() {
+    local function_name="$1"
+    local max_jobs="${2:-$XARGS_PARALLEL_JOBS}"
+    local input_files=("${@:3}")
+    
+    # Check if function exists
+    if ! declare -F "$function_name" > /dev/null; then
+        log_error "Function $function_name not found"
+        return 1
+    fi
+    
+    # Export the function so it's available to subshells
+    export -f "$function_name"
+    export -f log_info log_warn log_error log_header
+    export RED YELLOW GREEN BLUE NC
+    
+    # Use printf to handle filenames with spaces properly
+    printf '%s\0' "${input_files[@]}" | xargs -0 -P "$max_jobs" -I {} bash -c "$function_name \"\$1\"" _ {}
+}
+
+# Alternative parallel processing for when function export isn't suitable
+run_parallel_command() {
+    local command_template="$1"
+    local max_jobs="${2:-$XARGS_PARALLEL_JOBS}"
+    local input_files=("${@:3}")
+    
+    # Use printf to handle filenames with spaces properly
+    printf '%s\0' "${input_files[@]}" | xargs -0 -P "$max_jobs" -I {} bash -c "$command_template" _ {}
 }
 
 # Error handling utilities

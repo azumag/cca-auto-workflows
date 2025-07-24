@@ -9,16 +9,15 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/lib/common.sh"
 
-# Default settings
-DEFAULT_KEEP_DAYS=30
-DEFAULT_MAX_RUNS=100
+# Load configuration
+load_config "${CONFIG_FILE:-}"
+
+# Setup signal handling
+setup_signal_handling
+
+# Script-specific settings (can be overridden by config)
 DRY_RUN=false
 FORCE=false
-
-# Rate limiting configuration
-RATE_LIMIT_REQUESTS_PER_MINUTE=30
-RATE_LIMIT_DELAY=2  # seconds between operations
-BURST_SIZE=5  # allow burst of operations before applying delay
 
 # Override log_header for this script's specific purpose
 log_header() {
@@ -353,8 +352,22 @@ perform_cleanup() {
     log_info "✅ Cleanup completed! Deleted $deleted_count workflow runs"
 }
 
+# Cleanup function for graceful shutdown
+cleanup_workflow_cleanup() {
+    log_info "Cleaning up workflow cleanup resources..."
+    
+    # Reset rate limiting state
+    OPERATION_COUNT=0
+    
+    # Clean up any temporary files
+    rm -f /tmp/cleanup_runs_$$.* 2>/dev/null || true
+}
+
 main() {
     log_info "🧹 Starting workflow runs cleanup for Claude Code Auto Workflows..."
+    
+    # Register cleanup function for graceful shutdown
+    add_cleanup_function cleanup_workflow_cleanup
     
     # Parse arguments
     local parsed_args
@@ -392,6 +405,9 @@ main() {
     else
         log_info "   Repository workflow runs have been optimized"
     fi
+    
+    # Clean up resources
+    cleanup_workflow_cleanup
 }
 
 main "$@"
