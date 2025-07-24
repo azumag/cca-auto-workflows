@@ -52,8 +52,8 @@ create_parallel_test_workflows() {
     local workflow_dir="$TEST_REPO_DIR/.github/workflows"
     mkdir -p "$workflow_dir"
     
-    # Create 20 test workflows to ensure parallel processing is exercised
-    for i in {1..20}; do
+    # Create test workflows to ensure parallel processing is exercised
+    for i in $(seq 1 $TEST_WORKFLOWS_COUNT); do
         local workflow_type=$((i % 4))
         case $workflow_type in
             0) create_basic_workflow "$workflow_dir/basic-$i.yml" "Basic Workflow $i" ;;
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        version: [16, 18, 20]
+        version: [$NODE_VERSIONS]
     steps:
       - uses: actions/checkout@v4
       - name: Test with version \${{ matrix.version }}
@@ -204,18 +204,18 @@ case "$1 $2" in
         exit 0
         ;;
     "api rate_limit")
-        cat << 'RATE_LIMIT_EOF'
+        cat << RATE_LIMIT_EOF
 {
   "resources": {
     "core": {
-      "limit": 5000,
+      "limit": $GITHUB_API_LIMIT_DEFAULT,
       "used": 250,
       "remaining": 4750,
       "reset": 1640995200
     }
   },
   "rate": {
-    "limit": 5000,
+    "limit": $GITHUB_API_LIMIT_DEFAULT,
     "used": 250,
     "remaining": 4750,
     "reset": 1640995200
@@ -397,9 +397,15 @@ cleanup_parallel_processes() {
     local pids
     pids=$(jobs -p 2>/dev/null) || true
     if [[ -n "$pids" ]]; then
-        echo "$pids" | xargs kill -TERM 2>/dev/null || true
+        # Capture PIDs once to avoid race condition
+        local pids_array=($pids)
+        
+        # Send TERM signal first
+        printf "%s\n" "${pids_array[@]}" | xargs kill -TERM 2>/dev/null || true
         sleep 0.5
-        echo "$pids" | xargs kill -KILL 2>/dev/null || true
+        
+        # Force kill any remaining processes
+        printf "%s\n" "${pids_array[@]}" | xargs kill -KILL 2>/dev/null || true
     fi
     
     # Clean up any temporary files created during testing
@@ -421,7 +427,7 @@ cleanup_parallel_processes() {
     local start_time end_time duration
     start_time=$(date +%s)
     
-    run timeout 30 ./scripts/validate-workflows.sh
+    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
     
     end_time=$(date +%s)
     duration=$((end_time - start_time))
@@ -441,7 +447,7 @@ cleanup_parallel_processes() {
     # Create a test that would expose race conditions without proper locking
     export MAX_PARALLEL_JOBS=8  # Increase parallelism to stress test
     
-    run timeout 20 ./scripts/validate-workflows.sh
+    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/validate-workflows.sh
     assert_success
     
     # Should maintain accurate error/warning counts despite parallel execution
@@ -514,7 +520,7 @@ esac
 EOF
     chmod +x "$TEST_TEMP_DIR/bin/gh"
     
-    run timeout 30 ./scripts/cleanup-old-runs.sh --days 30 --max-runs 5 --force
+    run timeout $TEST_TIMEOUT_LONG ./scripts/cleanup-old-runs.sh --days 30 --max-runs 5 --force
     assert_success
     
     assert_output --partial "Starting cleanup process"
@@ -531,7 +537,7 @@ EOF
     local start_time end_time duration
     start_time=$(date +%s)
     
-    run timeout 20 ./scripts/cleanup-old-runs.sh --days 30 --max-runs 10 --force
+    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/cleanup-old-runs.sh --days 30 --max-runs 10 --force
     
     end_time=$(date +%s)
     duration=$((end_time - start_time))
@@ -549,10 +555,10 @@ EOF
     # Test concurrent cleanup operations don't interfere with each other
     
     # Start two cleanup processes in parallel (background)
-    timeout 15 ./scripts/cleanup-old-runs.sh --days 30 --max-runs 20 --force &
+    timeout $TEST_TIMEOUT_SHORT ./scripts/cleanup-old-runs.sh --days 30 --max-runs 20 --force &
     local pid1=$!
     
-    timeout 15 ./scripts/cleanup-old-runs.sh --days 30 --max-runs 20 --force &
+    timeout $TEST_TIMEOUT_SHORT ./scripts/cleanup-old-runs.sh --days 30 --max-runs 20 --force &
     local pid2=$!
     
     # Wait for both to complete
@@ -573,7 +579,7 @@ EOF
 
 # Parallel performance analysis tests
 @test "parallel processing: analyze-performance.sh runs benchmarks concurrently" {
-    run timeout 30 ./scripts/analyze-performance.sh --benchmarks
+    run timeout $TEST_TIMEOUT_LONG ./scripts/analyze-performance.sh --benchmarks
     assert_success
     
     assert_output --partial "Running performance benchmarks"
@@ -586,7 +592,7 @@ EOF
 @test "parallel processing: analyze-performance.sh handles concurrent load tests" {
     export ENABLE_LOAD_TESTS="true"
     
-    run timeout 30 ./scripts/analyze-performance.sh --load-tests
+    run timeout $TEST_TIMEOUT_LONG ./scripts/analyze-performance.sh --load-tests
     assert_success
     
     assert_output --partial "Running load tests"
@@ -598,7 +604,7 @@ EOF
 @test "parallel processing: analyze-performance.sh modules work together safely" {
     # Test that all modules can run concurrently without interference
     
-    run timeout 30 ./scripts/analyze-performance.sh --benchmarks --load-tests
+    run timeout $TEST_TIMEOUT_LONG ./scripts/analyze-performance.sh --benchmarks --load-tests
     assert_success
     
     assert_output --partial "Initializing performance analysis modules"
@@ -614,7 +620,7 @@ EOF
 # Signal handling and resource cleanup tests
 @test "parallel processing: scripts handle SIGTERM gracefully during parallel operations" {
     # Start validation in background
-    timeout 30 ./scripts/validate-workflows.sh &
+    timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh &
     local pid=$!
     
     # Let it start processing
@@ -792,7 +798,7 @@ EOF
     export ENABLE_CACHE="true"
     
     # Run validation
-    run timeout 30 ./scripts/validate-workflows.sh
+    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
     assert_success
     assert_output --partial "parallel"
     
@@ -803,7 +809,7 @@ EOF
     assert_output --partial "load-tests=true"
     
     # Run cleanup (dry run)
-    run timeout 20 ./scripts/cleanup-old-runs.sh --dry-run
+    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/cleanup-old-runs.sh --dry-run
     assert_success
     assert_output --partial "DRY RUN"
     

@@ -10,7 +10,7 @@ setup() {
     # Set up environment for parallel cleanup testing
     export GITHUB_TOKEN="test-token-cleanup"
     export GITHUB_REPOSITORY="test-org/cleanup-test-repo"
-    export DEFAULT_KEEP_DAYS=30
+    export DEFAULT_KEEP_DAYS=$DEFAULT_CLEANUP_DAYS
     export DEFAULT_MAX_RUNS=50
     export RATE_LIMIT_REQUESTS_PER_MINUTE=60
     export BURST_SIZE=10
@@ -49,7 +49,7 @@ case "$1 $2" in
         cat << EOF
 {
   "rate": {
-    "limit": 5000,
+    "limit": $GITHUB_API_LIMIT_DEFAULT,
     "used": $((5000 - remaining)),
     "remaining": $remaining,
     "reset": 1640995200
@@ -236,7 +236,7 @@ cleanup_cleanup_processes() {
     local start_time end_time duration
     start_time=$(date +%s)
     
-    run timeout 30 "$BATS_TEST_DIRNAME/../scripts/cleanup-old-runs.sh" --days 60 --max-runs 20 --force
+    run timeout $TEST_TIMEOUT_LONG "$BATS_TEST_DIRNAME/../scripts/cleanup-old-runs.sh" --days 60 --max-runs 20 --force
     
     end_time=$(date +%s)
     duration=$((end_time - start_time))

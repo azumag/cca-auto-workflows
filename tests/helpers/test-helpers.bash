@@ -32,6 +32,9 @@ else
     fail() { echo "FAIL: $1" >&2; return 1; }
 fi
 
+# Source test constants
+source "${BASH_SOURCE[0]%/*}/test-constants.bash"
+
 # Test environment setup
 setup_test_environment() {
     export TEST_TEMP_DIR="$(mktemp -d)"
@@ -52,6 +55,21 @@ teardown_test_environment() {
         rm -rf "$TEST_TEMP_DIR"
     fi
     export PATH="$ORIGINAL_PATH"
+}
+
+# Generic mock command builder to reduce code duplication
+create_command_mock() {
+    local command_name="$1"
+    local mock_content="$2"
+    local exit_code="${3:-0}"
+    
+    cat > "$TEST_TEMP_DIR/bin/$command_name" << EOF
+#!/bin/bash
+# Mock $command_name for testing
+$mock_content
+exit $exit_code
+EOF
+    chmod +x "$TEST_TEMP_DIR/bin/$command_name"
 }
 
 # Mock GitHub CLI
@@ -111,12 +129,7 @@ EOF
 create_jq_mock() {
     local response="$1"
     
-    cat > "$TEST_TEMP_DIR/bin/jq" << EOF
-#!/bin/bash
-# Mock jq for testing
-echo '$response'
-EOF
-    chmod +x "$TEST_TEMP_DIR/bin/jq"
+    create_command_mock "jq" "echo '$response'"
 }
 
 # Mock yq command
@@ -159,12 +172,7 @@ EOF
 create_python3_mock() {
     local exit_code="${1:-0}"
     
-    cat > "$TEST_TEMP_DIR/bin/python3" << EOF
-#!/bin/bash
-# Mock python3 for testing
-exit $exit_code
-EOF
-    chmod +x "$TEST_TEMP_DIR/bin/python3"
+    create_command_mock "python3" "" "$exit_code"
 }
 
 # Create mock workflow directory
