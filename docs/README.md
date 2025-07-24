@@ -127,7 +127,7 @@ CONFIG_FILE="config/my-config.conf" ./scripts/analyze-performance.sh
 - [Environment Variables](CONFIGURATION.md#environment-variables) - All environment variables
 - [Configuration Validation](CONFIGURATION.md#configuration-validation) - Validation system
 - [Environment-Specific Configurations](CONFIGURATION.md#environment-specific-configurations) - Per-environment setup
-- [Troubleshooting Configuration Issues](CONFIGURATION.md#troubleshooting-configuration-issues) - Problem resolution
+- [Troubleshooting Configuration Issues](TROUBLESHOOTING.md) - Problem resolution
 
 ### [Performance Tuning Guide](PERFORMANCE_TUNING.md)
 
@@ -291,7 +291,7 @@ If you're upgrading from an earlier version:
 - **GitHub CLI v1.x support removed** - Upgrade to gh 2.0.0+
 - **Enhanced configuration validation** - Review and update config files
 
-For comprehensive version compatibility information, including environment-specific configurations and troubleshooting, see the [Configuration Guide](CONFIGURATION.md#version-compatibility).
+For comprehensive version compatibility information, including environment-specific configurations and troubleshooting, see the [Advanced Configuration Guide](ADVANCED.md#version-compatibility).
 
 ## 🔧 Configuration Quick Reference
 
@@ -365,7 +365,7 @@ gh api rate_limit
 | Issue | Solution | Reference |
 |-------|----------|-----------|
 | High API usage | Increase cache TTL, use GitHub App token | [Performance Tuning](PERFORMANCE_TUNING.md#rate-limit-management) |
-| Configuration errors | Run validation, check environment variables | [Configuration Guide](CONFIGURATION.md#troubleshooting-configuration-issues) |
+| Configuration errors | Run validation, check environment variables | [Troubleshooting Guide](TROUBLESHOOTING.md) |
 | Performance issues | Optimize parallel jobs, check system resources | [Performance Tuning](PERFORMANCE_TUNING.md#troubleshooting-performance-issues) |
 | Cache problems | Check permissions, TTL settings | [Performance Tuning](PERFORMANCE_TUNING.md#caching-strategies) |
 
