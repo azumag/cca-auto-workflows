@@ -100,6 +100,69 @@ record_api_operation() {
     echo "$(date -Iseconds),${endpoint},${status_code},${response_time}" >> "$api_metrics_file"
 }
 
+# Record resource usage metrics
+record_resource_usage() {
+    local operation_name="$1"
+    local parallel_jobs="${2:-1}"
+    
+    if [[ "$RESOURCE_MONITOR_ENABLED" != "true" ]]; then
+        return 0
+    fi
+    
+    local memory_usage cpu_usage load_avg available_memory
+    memory_usage=$(get_memory_usage)
+    cpu_usage=$(get_cpu_usage)
+    load_avg=$(get_load_average)
+    available_memory=$(get_available_memory)
+    
+    local resource_metrics_file="${METRICS_DIR}/resources.log"
+    echo "$(date -Iseconds),${operation_name},${parallel_jobs},${memory_usage},${cpu_usage},${load_avg},${available_memory}" >> "$resource_metrics_file"
+}
+
+# Get resource usage trends
+get_resource_trends() {
+    local operation_name="${1:-*}"
+    local resource_file="${METRICS_DIR}/resources.log"
+    
+    if [[ ! -f "$resource_file" ]]; then
+        echo "No resource metrics available"
+        return 1
+    fi
+    
+    local avg_memory avg_cpu max_memory max_cpu
+    if [[ "$operation_name" == "*" ]]; then
+        read avg_memory avg_cpu max_memory max_cpu < <(awk -F, '
+            { 
+                mem_sum += $4; cpu_sum += $5; count++; 
+                if ($4 > max_mem) max_mem = $4;
+                if ($5 > max_cpu) max_cpu = $5;
+            } 
+            END { 
+                if (count > 0) 
+                    printf "%.1f %.1f %.1f %.1f", mem_sum/count, cpu_sum/count, max_mem, max_cpu;
+                else 
+                    print "0 0 0 0"
+            }' "$resource_file")
+    else
+        read avg_memory avg_cpu max_memory max_cpu < <(grep ",$operation_name," "$resource_file" | awk -F, '
+            { 
+                mem_sum += $4; cpu_sum += $5; count++; 
+                if ($4 > max_mem) max_mem = $4;
+                if ($5 > max_cpu) max_cpu = $5;
+            } 
+            END { 
+                if (count > 0) 
+                    printf "%.1f %.1f %.1f %.1f", mem_sum/count, cpu_sum/count, max_mem, max_cpu;
+                else 
+                    print "0 0 0 0"
+            }')
+    fi
+    
+    echo "📊 Resource Usage Trends for ${operation_name}:"
+    echo "  💾 Average memory: ${avg_memory:-0}% (peak: ${max_memory:-0}%)"
+    echo "  🖥️  Average CPU: ${avg_cpu:-0}% (peak: ${max_cpu:-0}%)"
+}
+
 # Calculate cache hit rate
 get_cache_hit_rate() {
     local cache_name="${1:-*}"
@@ -315,6 +378,18 @@ generate_performance_report() {
     log_info "  ⏱️  Average operation time: $(get_average_operation_time)s"
     log_info "  ✅ Overall success rate: $(get_operation_success_rate)%"
     
+    # Show resource usage trends if available
+    if [[ -f "${METRICS_DIR}/resources.log" ]]; then
+        log_info "🖥️  Resource Usage:"
+        get_resource_trends "*" | tail -n +2  # Skip the header line
+        
+        # Show current resource status
+        if command -v get_resource_stats >/dev/null 2>&1; then
+            log_info "📊 Current System Status:"
+            get_resource_stats | tail -n +2  # Skip the header line
+        fi
+    fi
+    
     # Show GitHub API metrics if available
     if command -v github_api_get_metrics &>/dev/null; then
         local api_metrics
@@ -352,7 +427,14 @@ export_metrics_json() {
   },
   "api": {
     "operations": $API_OPERATIONS
-  }
+  },
+  "resources": $(
+    if [[ -f "${METRICS_DIR}/resources.log" ]]; then
+      get_resource_stats "json"
+    else
+      echo '{"available": false}'
+    fi
+  )
 }
 EOF
     
@@ -368,7 +450,7 @@ performance_metrics_cleanup() {
     local archive_date
     archive_date=$(date -d "${METRICS_RETENTION_DAYS} days ago" '+%Y-%m-%d')
     
-    for log_file in operations.log cache.log api.log benchmarks.log loadtests.log; do
+    for log_file in operations.log cache.log api.log benchmarks.log loadtests.log resources.log; do
         local full_path="${METRICS_DIR}/${log_file}"
         if [[ -f "$full_path" ]]; then
             # Remove entries older than retention period
