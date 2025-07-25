@@ -4,7 +4,7 @@ This guide provides systematic diagnosis and resolution of configuration issues 
 
 **Related Documentation:**
 - [CONFIGURATION.md](CONFIGURATION.md) - Core configuration options and basic setup
-- [SECURITY.md](SECURITY.md) - Security considerations and best practices
+- [SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md) - Security overview and quick start guide
 - [ADVANCED.md](ADVANCED.md) - Advanced configuration patterns and version compatibility
 
 ## Table of Contents
@@ -1238,5 +1238,5 @@ All data is stored locally and used only to improve documentation accuracy.
 
 For additional configuration topics, see the related documentation:
 - **[CONFIGURATION.md](CONFIGURATION.md)** - Core configuration options and basic setup
-- **[SECURITY.md](SECURITY.md)** - Comprehensive security practices for configuration management
+- **[SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md)** - Comprehensive security practices for configuration management
 - **[ADVANCED.md](ADVANCED.md)** - Advanced configuration patterns and version compatibility

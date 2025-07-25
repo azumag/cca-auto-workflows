@@ -3,7 +3,7 @@
 This guide covers core configuration options, environment variables, and basic setup for Claude Code Auto Workflows.
 
 **Related Documentation:**
-- [SECURITY.md](SECURITY.md) - Security considerations and best practices
+- [SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md) - Security overview and quick start guide
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Troubleshooting configuration issues
 - [ADVANCED.md](ADVANCED.md) - Advanced configuration patterns and version compatibility
 
@@ -1135,6 +1135,6 @@ run_performance_test "config/high-performance.conf" "high-performance"
 
 This core configuration guide provides the essential information needed to configure Claude Code Auto Workflows effectively. For additional topics, see the related documentation:
 
-- **[SECURITY.md](SECURITY.md)** - Comprehensive security practices for configuration management
+- **[SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md)** - Comprehensive security practices for configuration management
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Systematic diagnosis and resolution of configuration issues
 - **[ADVANCED.md](ADVANCED.md)** - Advanced configuration patterns, version compatibility, and dynamic configurations
