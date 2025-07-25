@@ -3,12 +3,14 @@
 This guide covers core configuration options, environment variables, and basic setup for Claude Code Auto Workflows.
 
 **Related Documentation:**
+
 - [SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md) - Security overview and quick start guide
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Troubleshooting configuration issues
 - [ADVANCED.md](ADVANCED.md) - Advanced configuration patterns and version compatibility
 - [PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md) - Performance optimization using configuration settings
 
 **Cross-References:**
+
 - [Main README Troubleshooting](../README.md#troubleshooting-guide) - General troubleshooting workflow
 - [Performance Tuning - Configuration Tuning](PERFORMANCE_TUNING.md#configuration-tuning) - Performance-focused configuration
 
@@ -21,6 +23,7 @@ This guide covers core configuration options, environment variables, and basic s
 - [Configuration Validation](#configuration-validation)
 - [Environment-Specific Configurations](#environment-specific-configurations)
 - [Configuration Best Practices](#configuration-best-practices)
+- [Configuration Migration Guide](#configuration-migration-guide)
 
 ## Configuration Overview
 
@@ -173,6 +176,7 @@ COLORED_OUTPUT=true
 You can create custom configuration files for different environments:
 
 #### Development Configuration (`config/development.conf`)
+
 ```bash
 # Development-specific settings
 MAX_PARALLEL_JOBS=2
@@ -189,6 +193,7 @@ CHECK_PERFORMANCE=true
 ```
 
 #### Production Configuration (`config/production.conf`)
+
 ```bash
 # Production-optimized settings
 MAX_PARALLEL_JOBS=8
@@ -208,6 +213,7 @@ DEFAULT_MAX_RUNS=500
 ```
 
 #### CI/CD Configuration (`config/ci.conf`)
+
 ```bash
 # CI/CD environment settings
 MAX_PARALLEL_JOBS=4
@@ -244,6 +250,7 @@ All configuration options can be overridden using environment variables. Environ
 ### Core Environment Variables
 
 #### Parallel Processing
+
 ```bash
 # Number of parallel jobs for CPU-intensive tasks
 export MAX_PARALLEL_JOBS=8
@@ -256,6 +263,7 @@ export GITHUB_API_PARALLEL_JOBS=4  # Specific to API operations
 ```
 
 #### Caching
+
 ```bash
 # Cache time-to-live in seconds
 export CACHE_TTL=1800
@@ -272,6 +280,7 @@ export ENABLE_CACHE=true
 ```
 
 #### Rate Limiting
+
 ```bash
 # GitHub API rate limiting
 export RATE_LIMIT_REQUESTS_PER_MINUTE=30
@@ -283,6 +292,7 @@ export GITHUB_API_RATE_LIMIT_BUFFER=100
 ```
 
 #### Analysis Configuration
+
 ```bash
 # Workflow analysis settings
 export WORKFLOW_ANALYSIS_LIMIT=50
@@ -300,6 +310,7 @@ export LOAD_TEST_DURATION=60
 ```
 
 #### Output Configuration
+
 ```bash
 # Output format: console, json, markdown
 export OUTPUT_FORMAT=console
@@ -313,6 +324,7 @@ export COLORED_OUTPUT=true
 ```
 
 #### Validation Configuration
+
 ```bash
 # Enable/disable various validation checks
 export VALIDATE_SCHEMA=true
@@ -321,6 +333,7 @@ export CHECK_PERFORMANCE=true
 ```
 
 #### Cleanup Configuration
+
 ```bash
 # Default retention settings
 export DEFAULT_KEEP_DAYS=30
@@ -371,6 +384,7 @@ export MAX_MEMORY_MB=1024
 | `XARGS_PARALLEL_JOBS` | Integer | 4 | Parallel jobs for xargs operations | 1-32 |
 
 **Usage Examples:**
+
 ```bash
 # Conservative setting for low-resource systems
 export MAX_PARALLEL_JOBS=2
@@ -383,6 +397,7 @@ export MAX_PARALLEL_JOBS=$(nproc)
 ```
 
 **Performance Impact:**
+
 - **Too low**: Underutilizes system resources
 - **Too high**: Can cause resource contention and system instability
 - **Optimal**: Usually 1-2x CPU core count
@@ -398,6 +413,7 @@ export MAX_PARALLEL_JOBS=$(nproc)
 | `ENABLE_CACHE` | Boolean | true | Enable/disable caching | true, false |
 
 **Cache TTL Guidelines:**
+
 ```bash
 # Development: Short TTL for fresh data
 export CACHE_TTL=300    # 5 minutes
@@ -409,7 +425,8 @@ export CACHE_TTL=3600   # 1 hour
 export CACHE_TTL=7200   # 2 hours
 ```
 
-**See also:** 
+**See also:**
+
 - [Performance Tuning - Caching Strategies](PERFORMANCE_TUNING.md#caching-strategies)
 - [Performance Tuning - Cache Performance Issues](PERFORMANCE_TUNING.md#2-poor-cache-performance)
 
@@ -422,6 +439,7 @@ export CACHE_TTL=7200   # 2 hours
 | `BURST_SIZE` | Integer | 5 | Number of burst requests allowed | 1-20 |
 
 **Rate Limiting Strategies:**
+
 ```bash
 # Conservative (shared environments)
 export RATE_LIMIT_REQUESTS_PER_MINUTE=15
@@ -436,7 +454,8 @@ export RATE_LIMIT_REQUESTS_PER_MINUTE=60
 export RATE_LIMIT_DELAY=1
 ```
 
-**See also:** 
+**See also:**
+
 - [Performance Tuning - Rate Limit Management](PERFORMANCE_TUNING.md#rate-limit-management)
 - [Main README - Rate Limiting Troubleshooting](../README.md#troubleshooting-guide)
 
@@ -454,6 +473,7 @@ The `LOG_LEVEL` configuration option controls the verbosity of logging output.
 | `ERROR` | Error messages only | Critical monitoring | Error messages only |
 
 **LOG_LEVEL Examples:**
+
 ```bash
 # Development environment - see everything
 export LOG_LEVEL=DEBUG
@@ -469,6 +489,7 @@ export LOG_LEVEL=ERROR
 ```
 
 **LOG_LEVEL Validation:**
+
 ```bash
 # The configuration validation ensures LOG_LEVEL is valid
 validate_log_level() {
@@ -507,6 +528,7 @@ validate_log_level() {
 | `OUTPUT_FILE` | String | "" | Output file path (optional) | Any valid file path |
 
 **Output Format Examples:**
+
 ```bash
 # Console output with colors (default)
 export OUTPUT_FORMAT=console
@@ -591,6 +613,7 @@ The following comprehensive examples demonstrate common validation failures, the
 #### Numeric Range Validation Failures
 
 **Scenario 1: MAX_PARALLEL_JOBS Out of Range**
+
 ```bash
 # Failure case: Value too high
 export MAX_PARALLEL_JOBS=50
@@ -621,6 +644,7 @@ export MAX_PARALLEL_JOBS=8
 ```
 
 **Scenario 2: CACHE_TTL Invalid Range**
+
 ```bash
 # Failure case: Value too low
 export CACHE_TTL=30
@@ -653,6 +677,7 @@ export CACHE_TTL=300
 #### Boolean Value Validation Failures
 
 **Scenario 3: Invalid Boolean Format**
+
 ```bash
 # Failure case: Wrong boolean format
 export ENABLE_CACHE=yes
@@ -688,6 +713,7 @@ export COLORED_OUTPUT=true
 #### Enum Value Validation Failures
 
 **Scenario 4: Invalid LOG_LEVEL**
+
 ```bash
 # Failure case: Invalid log level
 export LOG_LEVEL=VERBOSE
@@ -718,6 +744,7 @@ export LOG_LEVEL=DEBUG
 ```
 
 **Scenario 5: Invalid OUTPUT_FORMAT**
+
 ```bash
 # Failure case: Unsupported output format
 export OUTPUT_FORMAT=xml
@@ -753,6 +780,7 @@ export OUTPUT_FORMAT=json
 #### Configuration Dependency Failures
 
 **Scenario 6: Conflicting Configuration Dependencies**
+
 ```bash
 # Failure case: Benchmark enabled but insufficient iterations
 export ENABLE_BENCHMARKS=true
@@ -775,6 +803,7 @@ export BENCHMARK_ITERATIONS=5  # Use recommended value
 ```
 
 **Scenario 7: Rate Limiting Configuration Conflicts**
+
 ```bash
 # Failure case: Aggressive rate limiting with high delay
 export RATE_LIMIT_REQUESTS_PER_MINUTE=60
@@ -799,6 +828,7 @@ export RATE_LIMIT_DELAY=1  # Use appropriate delay for high rate
 #### File and Permission Validation Failures
 
 **Scenario 8: Configuration File Access Issues**
+
 ```bash
 # Failure case: Configuration file not readable
 CONFIG_FILE="/etc/cca-workflows/restricted.conf" ./scripts/validate-config.sh
@@ -824,6 +854,7 @@ CONFIG_FILE="config/development.conf" ./scripts/validate-config.sh
 #### Environment-Specific Validation Failures
 
 **Scenario 9: Production Configuration Missing Required Values**
+
 ```bash
 # Failure case: Production environment with placeholder values
 export ENVIRONMENT=production
@@ -849,6 +880,7 @@ export GITHUB_TOKEN="your-actual-github-token"
 #### Configuration Loading Sequence Failures
 
 **Scenario 10: Configuration Override Precedence Issues**
+
 ```bash
 # Failure case: Environment variable not overriding config file
 echo "MAX_PARALLEL_JOBS=2" > config/test.conf
@@ -873,6 +905,7 @@ CONFIG_FILE="config/test.conf" ./scripts/debug-config.sh
 ### Configuration Validation Recovery Procedures
 
 #### Generic Recovery Steps
+
 1. **Identify the Specific Error**: Run `./scripts/validate-config.sh` to get detailed error messages
 2. **Check Configuration Precedence**: Use `./scripts/debug-config.sh` to see final values
 3. **Fix the Root Cause**: Address the specific validation failure
@@ -880,6 +913,7 @@ CONFIG_FILE="config/test.conf" ./scripts/debug-config.sh
 5. **Test Functionality**: Run a basic operation to ensure configuration works
 
 #### Emergency Recovery
+
 ```bash
 # Reset to safe defaults if configuration is completely broken
 unset CONFIG_FILE
@@ -982,6 +1016,7 @@ BENCHMARK_ITERATIONS=3           # Fewer iterations for speed
 ```
 
 **Usage:**
+
 ```bash
 export CONFIG_FILE="config/development.conf"
 ./scripts/analyze-performance.sh
@@ -1012,6 +1047,7 @@ RATE_LIMIT_DELAY=4               # Slower, more reliable
 ```
 
 **Usage:**
+
 ```bash
 export CONFIG_FILE="config/production.conf"
 ./scripts/analyze-performance.sh --output production-report.json
@@ -1041,6 +1077,7 @@ CACHE_CLEANUP_INTERVAL=1800      # More frequent cleanup
 ```
 
 **Usage in GitHub Actions:**
+
 ```yaml
 - name: Run Performance Analysis
   run: |
@@ -1194,6 +1231,469 @@ run_performance_test "config/default.conf" "default"
 run_performance_test "config/optimized.conf" "optimized"
 run_performance_test "config/high-performance.conf" "high-performance"
 ```
+
+## Configuration Migration Guide
+
+This section provides comprehensive guidance for upgrading configurations between different versions of Claude Code Auto Workflows.
+
+### Migration Overview
+
+Claude Code Auto Workflows uses a versioned configuration system that ensures backward compatibility while introducing new features and optimizations. Migration between versions typically involves:
+
+1. **Configuration Schema Updates**: New configuration options with sensible defaults
+2. **Deprecation Handling**: Gradual phase-out of obsolete settings
+3. **Performance Optimizations**: Enhanced default values for better performance
+4. **Security Enhancements**: Improved security-related configuration options
+
+### Version Migration Paths
+
+#### From Version 1.x to 2.0.0
+
+**Overview:** Version 2.0.0 introduced system health monitoring, enhanced CI pipeline, and performance optimizations.
+
+**Key Changes:**
+
+- Enhanced error handling and retry mechanisms
+- New performance monitoring configuration
+- Improved rate limiting and caching strategies
+- Enhanced security scanning integration
+
+**Step-by-Step Migration:**
+
+1. **Backup Current Configuration**
+
+   ```bash
+   # Backup existing configuration files
+   cp config/production.conf config/production.conf.v1.backup
+   cp scripts/config/default.conf scripts/config/default.conf.v1.backup
+   ```
+
+2. **Update Configuration Schema**
+
+   ```bash
+   # No breaking changes - existing configurations remain valid
+   # New defaults are automatically applied
+   
+   # Optional: Update to take advantage of new features
+   # Enhanced rate limiting (optional)
+   export RATE_LIMIT_REQUESTS_PER_MINUTE=30  # Was 20 in 1.x
+   export BURST_SIZE=5  # New option in 2.0.0
+   
+   # Enhanced caching (optional)
+   export CACHE_CLEANUP_INTERVAL=3600  # New automatic cleanup
+   ```
+
+3. **Validate Migration**
+
+   ```bash
+   # Test configuration loading
+   ./scripts/validate-config.sh
+   
+   # Test basic functionality
+   ./scripts/analyze-performance.sh --dry-run
+   ```
+
+**Configuration Examples:**
+
+```bash
+# Version 1.x configuration
+MAX_PARALLEL_JOBS=4
+CACHE_TTL=1800
+LOG_LEVEL=INFO
+
+# Version 2.0.0 enhanced configuration (backward compatible)
+MAX_PARALLEL_JOBS=4
+CACHE_TTL=1800
+CACHE_CLEANUP_INTERVAL=3600  # New: automatic cache cleanup
+LOG_LEVEL=INFO
+BURST_SIZE=5  # New: improved rate limiting
+```
+
+#### From Version 2.0.0 to 2.1.0
+
+**Overview:** Version 2.1.0 introduced resource monitoring, enhanced utility scripts, and advanced parallel processing controls.
+
+**Key Changes:**
+
+- **Resource Monitoring**: Intelligent system resource management
+- **Advanced Parallel Processing**: CPU and memory-aware job control
+- **Enhanced Utility Scripts**: Comprehensive tooling with new configuration options
+- **Development Dependencies**: New tools requiring configuration updates
+
+**Step-by-Step Migration:**
+
+1. **Backup Current Configuration**
+
+   ```bash
+   # Backup existing configuration
+   cp config/production.conf config/production.conf.v2.0.backup
+   cp scripts/config/default.conf scripts/config/default.conf.v2.0.backup
+   ```
+
+2. **Update Configuration Schema**
+
+   **Add Resource Monitoring Configuration:**
+
+   ```bash
+   # Add to your configuration file or set as environment variables
+   
+   # Resource monitoring (recommended for production)
+   export RESOURCE_MONITOR_ENABLED=true
+   export MEMORY_LIMIT_PERCENT=80
+   export CPU_LIMIT_PERCENT=90
+   export MIN_PARALLEL_JOBS=1
+   export MAX_SYSTEM_PARALLEL_JOBS=16
+   export RESOURCE_CHECK_INTERVAL=5
+   export PARALLEL_JOB_TIMEOUT=300
+   ```
+
+   **Update Existing Parallel Processing Settings:**
+
+   ```bash
+   # Enhanced parallel processing with resource awareness
+   # Your existing MAX_PARALLEL_JOBS setting is still valid
+   # But now it works with resource monitoring
+   
+   # Before (2.0.0): Fixed parallel jobs
+   MAX_PARALLEL_JOBS=8
+   
+   # After (2.1.0): Resource-aware parallel jobs
+   MAX_PARALLEL_JOBS=8  # Maximum allowed
+   RESOURCE_MONITOR_ENABLED=true  # Enable dynamic adjustment
+   MEMORY_LIMIT_PERCENT=80  # Reduce jobs if memory > 80%
+   CPU_LIMIT_PERCENT=90     # Reduce jobs if CPU > 90%
+   MIN_PARALLEL_JOBS=2      # Never go below 2 jobs
+   ```
+
+3. **Validate Migration**
+
+   ```bash
+   # Validate new configuration options
+   ./scripts/validate-config.sh
+   
+   # Test resource monitoring
+   export LOG_LEVEL=DEBUG
+   ./scripts/analyze-performance.sh --benchmarks
+   # Should see resource monitoring messages in debug output
+   ```
+
+**Configuration Examples:**
+
+```bash
+# Version 2.0.0 configuration
+MAX_PARALLEL_JOBS=8
+XARGS_PARALLEL_JOBS=8
+CACHE_TTL=1800
+CACHE_CLEANUP_INTERVAL=3600
+RATE_LIMIT_REQUESTS_PER_MINUTE=30
+BURST_SIZE=5
+LOG_LEVEL=INFO
+
+# Version 2.1.0 enhanced configuration
+MAX_PARALLEL_JOBS=8
+XARGS_PARALLEL_JOBS=8
+
+# New: Resource monitoring configuration
+RESOURCE_MONITOR_ENABLED=true
+MEMORY_LIMIT_PERCENT=80
+CPU_LIMIT_PERCENT=90
+MIN_PARALLEL_JOBS=1
+MAX_SYSTEM_PARALLEL_JOBS=16
+RESOURCE_CHECK_INTERVAL=5
+PARALLEL_JOB_TIMEOUT=300
+
+# Existing configuration (unchanged)
+CACHE_TTL=1800
+CACHE_CLEANUP_INTERVAL=3600
+RATE_LIMIT_REQUESTS_PER_MINUTE=30
+BURST_SIZE=5
+LOG_LEVEL=INFO
+```
+
+### Migration Troubleshooting
+
+#### Common Migration Issues
+
+**Issue 1: Configuration Validation Errors After Upgrade**
+
+*Symptoms:*
+
+```bash
+./scripts/validate-config.sh
+# ERROR: Invalid configuration option: RESOURCE_MONITOR_ENABLED
+```
+
+*Cause:* Using an old validation script that doesn't recognize new options.
+
+*Solution:*
+
+```bash
+# Ensure you're using the latest scripts
+git pull origin main
+git status  # Verify you have the latest files
+
+# Re-run validation
+./scripts/validate-config.sh
+```
+
+**Issue 2: Resource Monitoring Not Working**
+
+*Symptoms:*
+
+```bash
+# No resource monitoring messages in debug logs
+export LOG_LEVEL=DEBUG
+./scripts/analyze-performance.sh
+# Expected: Resource monitoring messages
+# Actual: No resource monitoring output
+```
+
+*Diagnosis:*
+
+```bash
+# Check if resource monitoring is enabled
+echo "RESOURCE_MONITOR_ENABLED: $RESOURCE_MONITOR_ENABLED"
+
+# Check if required tools are available
+which ps awk || echo "Missing system monitoring tools"
+```
+
+*Solution:*
+
+```bash
+# Enable resource monitoring explicitly
+export RESOURCE_MONITOR_ENABLED=true
+
+# Verify system tools are available (usually pre-installed)
+# On minimal containers, you may need to install:
+# apt-get update && apt-get install -y procps
+
+# Test resource monitoring
+./scripts/debug-config.sh
+```
+
+**Issue 3: Performance Regression After Migration**
+
+*Symptoms:*
+
+- Scripts run slower after upgrading to 2.1.0
+- Frequent "reducing parallel jobs due to resource constraints" messages
+
+*Diagnosis:*
+
+```bash
+# Check resource limits
+echo "Memory limit: $MEMORY_LIMIT_PERCENT%"
+echo "CPU limit: $CPU_LIMIT_PERCENT%"
+echo "Current parallel jobs: $MAX_PARALLEL_JOBS"
+
+# Monitor actual resource usage
+export LOG_LEVEL=DEBUG
+./scripts/analyze-performance.sh --benchmarks
+# Look for resource monitoring messages
+```
+
+*Solution:*
+
+```bash
+# Option 1: Adjust resource limits for your system
+export MEMORY_LIMIT_PERCENT=90  # Allow higher memory usage
+export CPU_LIMIT_PERCENT=95     # Allow higher CPU usage
+
+# Option 2: Disable resource monitoring if not needed
+export RESOURCE_MONITOR_ENABLED=false
+
+# Option 3: Increase minimum parallel jobs
+export MIN_PARALLEL_JOBS=4  # Maintain higher minimum performance
+```
+
+**Issue 4: Environment Variable Precedence Changes**
+
+*Symptoms:*
+
+- Configuration values not being applied as expected
+- Custom configuration file settings ignored
+
+*Diagnosis:*
+
+```bash
+# Debug configuration loading
+./scripts/debug-config.sh
+
+# Check loading order
+export LOG_LEVEL=DEBUG
+CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
+# Look for configuration loading messages
+```
+
+*Solution:*
+
+```bash
+# Verify configuration precedence (unchanged in migrations):
+# 1. default.conf (base configuration)
+# 2. Environment variables 
+# 3. Custom configuration file
+# 4. Command-line arguments
+
+# If custom config isn't applied, check:
+export CONFIG_FILE="/absolute/path/to/config/production.conf"
+./scripts/validate-config.sh
+
+# Verify environment variables are exported:
+export MAX_PARALLEL_JOBS=8  # Use 'export', not just assignment
+echo $MAX_PARALLEL_JOBS     # Should output: 8
+```
+
+#### Migration-Specific Validation Failures
+
+**Resource Monitoring Validation Errors:**
+
+```bash
+# Common validation errors and solutions:
+
+# Error: Invalid MEMORY_LIMIT_PERCENT range
+export MEMORY_LIMIT_PERCENT=50  # Valid range: 50-95
+
+# Error: Invalid CPU_LIMIT_PERCENT range  
+export CPU_LIMIT_PERCENT=70     # Valid range: 50-99
+
+# Error: MIN_PARALLEL_JOBS > MAX_PARALLEL_JOBS
+export MIN_PARALLEL_JOBS=2      # Must be ≤ MAX_PARALLEL_JOBS
+export MAX_PARALLEL_JOBS=8
+
+# Error: RESOURCE_CHECK_INTERVAL too low
+export RESOURCE_CHECK_INTERVAL=5  # Minimum: 5 seconds
+```
+
+### Migration Validation Steps
+
+#### Pre-Migration Validation
+
+1. **Document Current Configuration**
+
+   ```bash
+   # Export current configuration to file
+   ./scripts/debug-config.sh > pre-migration-config.txt
+   
+   # Test current functionality
+   ./scripts/analyze-performance.sh --dry-run > pre-migration-test.log 2>&1
+   ```
+
+2. **Check System Compatibility**
+
+   ```bash
+   # Verify system requirements for new features
+   
+   # For resource monitoring (v2.1.0+):
+   which ps awk free df || echo "Missing system monitoring tools"
+   
+   # Check available system resources
+   free -m  # Memory available
+   nproc    # CPU cores available
+   df -h /tmp  # Temporary space for caching
+   ```
+
+#### Post-Migration Validation
+
+1. **Configuration Schema Validation**
+
+   ```bash
+   # Validate all configuration options
+   ./scripts/validate-config.sh
+   
+   # Test with custom configuration
+   CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
+   
+   # Validate environment variable overrides
+   MAX_PARALLEL_JOBS=16 ./scripts/validate-config.sh
+   ```
+
+2. **Functional Testing**
+
+   ```bash
+   # Test basic functionality
+   ./scripts/analyze-performance.sh --dry-run
+   
+   # Test new features (v2.1.0+)
+   export RESOURCE_MONITOR_ENABLED=true
+   export LOG_LEVEL=DEBUG
+   ./scripts/analyze-performance.sh --benchmarks
+   
+   # Verify resource monitoring messages appear in output
+   grep -i "resource monitor" /tmp/performance-analysis.log
+   ```
+
+3. **Performance Validation**
+
+   ```bash
+   # Compare performance before and after migration
+   
+   # Run performance benchmark
+   time ./scripts/analyze-performance.sh --benchmarks > post-migration-test.log 2>&1
+   
+   # Compare results
+   echo "Pre-migration performance:"
+   grep "Total execution time" pre-migration-test.log
+   
+   echo "Post-migration performance:"  
+   grep "Total execution time" post-migration-test.log
+   
+   # Resource monitoring should maintain or improve performance
+   ```
+
+4. **Integration Testing**
+
+   ```bash
+   # Test integration with CI/CD pipelines
+   export CONFIG_FILE="config/ci.conf"
+   ./scripts/validate-workflows.sh
+   
+   # Test integration with different environments
+   for env in development staging production; do
+       echo "Testing $env configuration..."
+       CONFIG_FILE="config/$env.conf" ./scripts/validate-config.sh
+   done
+   ```
+
+#### Migration Rollback Procedures
+
+If migration issues occur, you can rollback safely:
+
+1. **Immediate Rollback**
+
+   ```bash
+   # Restore backup configuration
+   cp config/production.conf.v2.0.backup config/production.conf
+   cp scripts/config/default.conf.v2.0.backup scripts/config/default.conf
+   
+   # Clear new environment variables
+   unset RESOURCE_MONITOR_ENABLED MEMORY_LIMIT_PERCENT CPU_LIMIT_PERCENT
+   unset MIN_PARALLEL_JOBS MAX_SYSTEM_PARALLEL_JOBS RESOURCE_CHECK_INTERVAL
+   
+   # Validate rollback
+   ./scripts/validate-config.sh
+   ```
+
+2. **Selective Feature Rollback**
+
+   ```bash
+   # Disable only problematic features
+   export RESOURCE_MONITOR_ENABLED=false  # Disable resource monitoring
+   
+   # Keep other v2.1.0 enhancements
+   # Resource monitoring is the main new feature in 2.1.0
+   ```
+
+#### Migration Success Criteria
+
+A successful migration should meet these criteria:
+
+✅ **Configuration Validation**: `./scripts/validate-config.sh` passes without errors  
+✅ **Functional Testing**: All existing workflows continue to work  
+✅ **Performance**: Performance is maintained or improved  
+✅ **New Features**: New features work as documented (if enabled)  
+✅ **Error Handling**: Enhanced error handling works correctly  
+✅ **Documentation**: Configuration matches documented examples  
 
 This core configuration guide provides the essential information needed to configure Claude Code Auto Workflows effectively. For additional topics, see the related documentation:
 
