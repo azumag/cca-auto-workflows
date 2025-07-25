@@ -120,13 +120,13 @@ teardown() {
 @test "get_enhanced_cache_key: handles missing file parameter" {
     run get_enhanced_cache_key ""
     assert_failure
-    assert_output --partial "file parameter is required"
+    assert_output --partial "get_enhanced_cache_key: file parameter is required"
 }
 
 @test "get_enhanced_cache_key: detects path traversal attempts" {
     run get_enhanced_cache_key "../../../etc/passwd"
     assert_failure
-    assert_output --partial "path traversal detected"
+    assert_output --partial "get_enhanced_cache_key: path traversal detected"
 }
 
 @test "get_enhanced_cache_key: handles non-existent file" {
@@ -173,7 +173,7 @@ teardown() {
 @test "run_parallel_function: validates function exists" {
     run run_parallel_function "non_existent_function" 2 "$TEST_FILE"
     assert_failure
-    assert_output --partial "Function non_existent_function not found"
+    assert_output --partial "run_parallel_function: function not found: non_existent_function"
 }
 
 @test "run_parallel_function: processes files in parallel" {
@@ -261,13 +261,13 @@ teardown() {
 @test "show_progress: validates numeric inputs" {
     run show_progress "invalid" 100 "test"
     assert_failure
-    assert_output --partial "current and total must be numeric"
+    assert_output --partial "show_progress: current and total parameters must be numeric values"
 }
 
 @test "show_progress: handles zero total" {
     run show_progress 1 0 "test"
     assert_failure
-    assert_output --partial "total cannot be zero"
+    assert_output --partial "show_progress: total parameter cannot be zero"
 }
 
 @test "show_progress: handles completion (100%)" {
@@ -283,12 +283,12 @@ teardown() {
     MAX_PARALLEL_JOBS="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MAX_PARALLEL_JOBS value"
+    assert_output --partial "validate_config: MAX_PARALLEL_JOBS must be >= 1, got:"
     
     MAX_PARALLEL_JOBS="0"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MAX_PARALLEL_JOBS value"
+    assert_output --partial "validate_config: MAX_PARALLEL_JOBS must be >= 1, got:"
     
     MAX_PARALLEL_JOBS="4"
     # This may still fail due to other config values, but this specific error shouldn't occur
@@ -298,36 +298,36 @@ teardown() {
     CACHE_TTL="30"  # Below minimum of 60
     run validate_config
     assert_failure
-    assert_output --partial "Invalid CACHE_TTL value"
+    assert_output --partial "validate_config: CACHE_TTL must be >= 60 seconds, got:"
     
     CACHE_TTL="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid CACHE_TTL value"
+    assert_output --partial "validate_config: CACHE_TTL must be >= 60 seconds, got:"
 }
 
 @test "validate_config: validates MEMORY_LIMIT_PERCENT" {
     MEMORY_LIMIT_PERCENT="150"  # Above maximum of 100
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MEMORY_LIMIT_PERCENT value"
+    assert_output --partial "validate_config: MEMORY_LIMIT_PERCENT must be 1-100, got:"
     
     MEMORY_LIMIT_PERCENT="0"  # Below minimum of 1
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MEMORY_LIMIT_PERCENT value"
+    assert_output --partial "validate_config: MEMORY_LIMIT_PERCENT must be 1-100, got:"
 }
 
 @test "validate_config: validates boolean values" {
     ENABLE_CACHE="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid ENABLE_CACHE value"
+    assert_output --partial "validate_config: ENABLE_CACHE must be true or false, got:"
     
     RESOURCE_MONITOR_ENABLED="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid RESOURCE_MONITOR_ENABLED value"
+    assert_output --partial "validate_config: RESOURCE_MONITOR_ENABLED must be true or false, got:"
 }
 
 # Resource monitoring tests (optimized with better mocking)
@@ -489,18 +489,18 @@ EOF
 @test "calculate_optimal_parallel_jobs: validates input" {
     run calculate_optimal_parallel_jobs "invalid"
     assert_failure
-    assert_output --partial "Invalid base_jobs"
+    assert_output --partial "calculate_optimal_parallel_jobs: base_jobs must be positive integer, got:"
     
     run calculate_optimal_parallel_jobs "0"
     assert_failure
-    assert_output --partial "Invalid base_jobs"
+    assert_output --partial "calculate_optimal_parallel_jobs: base_jobs must be positive integer, got:"
 }
 
 # Cache setup tests (extending existing coverage)
 @test "setup_cache: validates cache directory path for security" {
     run setup_cache "../../../tmp/malicious_cache"
     assert_failure
-    assert_output --partial "Path traversal detected"
+    assert_output --partial "setup_cache: path traversal detected"
 }
 
 @test "setup_cache: creates cache with custom permissions" {
@@ -521,11 +521,11 @@ EOF
     
     run save_to_cache "../malicious_key" "data" "$TEST_CACHE_DIR"
     assert_failure
-    assert_output --partial "invalid cache key"
+    assert_output --partial "save_to_cache: invalid cache key:"
     
     run save_to_cache "key/with/slashes" "data" "$TEST_CACHE_DIR"
     assert_failure
-    assert_output --partial "invalid cache key"
+    assert_output --partial "save_to_cache: invalid cache key:"
 }
 
 @test "save_to_cache: validates required parameters" {
@@ -533,11 +533,11 @@ EOF
     
     run save_to_cache "" "data" "$TEST_CACHE_DIR"
     assert_failure
-    assert_output --partial "cache_key and cache_dir are required"
+    assert_output --partial "save_to_cache: cache_key and cache_dir parameters are required"
     
     run save_to_cache "key" "data" ""
     assert_failure
-    assert_output --partial "cache_key and cache_dir are required"
+    assert_output --partial "save_to_cache: cache_key and cache_dir parameters are required"
 }
 
 @test "save_to_cache: handles temporary file creation failure" {
@@ -548,7 +548,7 @@ EOF
     
     run save_to_cache "test_key" "test_data" "$TEST_CACHE_DIR"
     assert_failure
-    assert_output --partial "failed to create temporary file"
+    assert_output --partial "save_to_cache: failed to create temporary file"
     
     # Restore permissions for cleanup
     chmod 755 "$TEST_CACHE_DIR"
@@ -561,7 +561,7 @@ EOF
     
     run check_command "non_existent_command_12345"
     assert_failure
-    assert_output --partial "Command 'non_existent_command_12345' is required but not found"
+    assert_output --partial "check_command: command 'non_existent_command_12345' is required but not found"
 }
 
 @test "check_command: uses custom error message" {
@@ -627,8 +627,7 @@ EOF
 @test "run_parallel_with_resource_limits: validates function name for security" {
     run run_parallel_with_resource_limits "invalid-function-name!" "$TEST_FILE"
     assert_failure
-    assert_output --partial "Invalid function name"
-    assert_output --partial "contains unsafe characters"
+    assert_output --partial "run_parallel_with_resource_limits: function name contains unsafe characters:"
 }
 
 @test "run_parallel_with_resource_limits: falls back when monitoring disabled" {
