@@ -340,6 +340,11 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN --body "your_claude_oauth_token"
 
 If you encounter issues with the automated workflows, use this decision tree to diagnose and resolve common problems:
 
+**See also:**
+- [**Configuration Guide**](docs/CONFIGURATION.md) - Detailed configuration options and validation procedures
+- [**Performance Tuning Guide**](docs/PERFORMANCE_TUNING.md) - Comprehensive performance optimization strategies
+- [**Advanced Configuration Patterns**](docs/ADVANCED.md) - Complex configuration scenarios and troubleshooting
+
 ```mermaid
 flowchart TD
     ISSUE([Workflow Issue]) --> TYPE{What type of issue?}
@@ -350,23 +355,23 @@ flowchart TD
     TYPE -->|Permission Issues| PERMISSION{Check permissions}
     
     %% Trigger Issues
-    TRIGGER -->|Labels Missing| LABEL_CHECK[**🕐 Estimated Time: 2-5 minutes**<br/><br/>Verify required labels exist:<br/>• claude<br/>• processing<br/>• ci-passed, ci-failure<br/>Run: ./scripts/create-labels.sh<br/><br/>**Example**: Issue stuck with "@claude help" comment<br/>→ Missing 'claude' label prevents workflow trigger<br/>→ Solution: gh issue edit 123 --add-label claude]
+    TRIGGER -->|Labels Missing| LABEL_CHECK[**🕐 Estimated Time: 2-5 minutes**<br/><br/>Verify required labels exist:<br/>• claude<br/>• processing<br/>• ci-passed, ci-failure<br/>Run: ./scripts/create-labels.sh<br/><br/>**Example**: Issue stuck with "@claude help" comment<br/>→ Missing 'claude' label prevents workflow trigger<br/>→ Solution: gh issue edit 123 --add-label claude<br/><br/>**See also**: [Configuration Guide - Label Management](docs/CONFIGURATION.md#label-management)]
     TRIGGER -->|Wrong Event Type| EVENT_CHECK[**🕐 Estimated Time: 5-10 minutes**<br/><br/>Check workflow triggers:<br/>• Issues: labeled, opened<br/>• PRs: opened, synchronize<br/>• Schedule: cron expressions<br/><br/>**Example**: Claude not responding to new issues<br/>→ Workflow only triggers on 'labeled' not 'opened'<br/>→ Solution: Add 'opened' to workflow triggers]
     TRIGGER -->|Branch Protection| BRANCH_CHECK[**🕐 Estimated Time: 10-15 minutes**<br/><br/>Check branch protection rules<br/>Verify workflow can run on target branch<br/>Check required status checks<br/><br/>**Example**: "Required status check missing" error<br/>→ Branch protection requires 'ci' check but it's named 'tests'<br/>→ Solution: Update branch protection rule names]
     
     %% Failure Issues
     FAILURE -->|Authentication Errors| AUTH_FAILURE[**🕐 Estimated Time: 10-20 minutes**<br/><br/>Check GitHub token:<br/>• Valid and not expired<br/>• Correct permissions<br/>• Organization access if needed<br/><br/>**Example**: "Error: HTTP 401 Unauthorized"<br/>→ GITHUB_TOKEN expired after 90 days<br/>→ Solution: Regenerate PAT and update secrets<br/><br/>**Example**: "Error: Resource not accessible by token"<br/>→ Token missing 'workflow' scope for GitHub Actions<br/>→ Solution: Add workflow scope to token]
-    FAILURE -->|Rate Limiting| RATE_FAILURE[**🕐 Estimated Time: 15-30 minutes**<br/><br/>Check API rate limits:<br/>• Run: gh api rate_limit<br/>• Use GitHub App token for higher limits<br/>• Implement request throttling<br/><br/>**Example**: "Error: API rate limit exceeded"<br/>→ 4,800/5,000 requests used in last hour<br/>→ Solution: Increase CACHE_TTL from 300 to 1800 seconds<br/><br/>**Example**: Workflows failing at peak times<br/>→ Multiple repos sharing same PAT hitting limits<br/>→ Solution: Switch to GitHub App (15,000 req/hr limit)]
+    FAILURE -->|Rate Limiting| RATE_FAILURE[**🕐 Estimated Time: 15-30 minutes**<br/><br/>Check API rate limits:<br/>• Run: gh api rate_limit<br/>• Use GitHub App token for higher limits<br/>• Implement request throttling<br/><br/>**Example**: "Error: API rate limit exceeded"<br/>→ 4,800/5,000 requests used in last hour<br/>→ Solution: Increase CACHE_TTL from 300 to 1800 seconds<br/><br/>**Example**: Workflows failing at peak times<br/>→ Multiple repos sharing same PAT hitting limits<br/>→ Solution: Switch to GitHub App (15,000 req/hr limit)<br/><br/>**See also**: [Performance Tuning - Rate Limit Management](docs/PERFORMANCE_TUNING.md#rate-limit-management)]
     FAILURE -->|Script Errors| SCRIPT_FAILURE[**🕐 Estimated Time: 5-15 minutes**<br/><br/>Check script execution:<br/>• Review workflow logs<br/>• Check script permissions<br/>• Verify dependencies installed<br/><br/>**Example**: "./scripts/analyze.sh: Permission denied"<br/>→ Script lost execute permissions after git clone<br/>→ Solution: chmod +x scripts/*.sh<br/><br/>**Example**: "jq: command not found"<br/>→ Missing dependency on GitHub Actions runner<br/>→ Solution: Add 'sudo apt-get install jq' to workflow]
     
     %% Claude Code Issues
     CLAUDE -->|Claude Not Responding| CLAUDE_RESPONSE[**🕐 Estimated Time: 10-25 minutes**<br/><br/>Check Claude Code setup:<br/>• Verify anthropics/claude-code-action version<br/>• Check issue content format<br/>• Review Claude Code logs<br/><br/>**Example**: Claude comment shows "working..." but never updates<br/>→ CLAUDE_CODE_OAUTH_TOKEN missing from secrets<br/>→ Solution: Add OAuth token to repository secrets<br/><br/>**Example**: "Error: Forbidden" in Claude workflow logs<br/>→ Using old anthropics/claude-code-action@v1<br/>→ Solution: Update to anthropics/claude-code-action@beta]
     CLAUDE -->|Invalid Instructions| CLAUDE_INSTRUCTIONS[**🕐 Estimated Time: 5-10 minutes**<br/><br/>Review issue content:<br/>• Clear and specific instructions<br/>• Proper formatting<br/>• Avoid ambiguous requests<br/><br/>**Example**: "@claude fix the bug" (too vague)<br/>→ Claude responds with "I need more specific details"<br/>→ Solution: "@claude fix the null pointer exception in UserService.java line 45"<br/><br/>**Example**: Mixing multiple unrelated requests in one comment<br/>→ Claude only addresses first request<br/>→ Solution: Create separate issues for each task]
-    CLAUDE -->|Timeout Issues| CLAUDE_TIMEOUT[**🕐 Estimated Time: 20-45 minutes**<br/><br/>Check execution time:<br/>• Complex tasks may need more time<br/>• Break down large tasks<br/>• Review workflow timeout settings<br/><br/>**Example**: "Error: Job was cancelled" after 6 hours<br/>→ GitHub Actions default timeout is 6 hours<br/>→ Solution: Break large refactoring into smaller tasks<br/><br/>**Example**: Claude stops mid-task on complex implementations<br/>→ Task too large for single execution context<br/>→ Solution: Split into phases with explicit milestones]
+    CLAUDE -->|Timeout Issues| CLAUDE_TIMEOUT[**🕐 Estimated Time: 20-45 minutes**<br/><br/>Check execution time:<br/>• Complex tasks may need more time<br/>• Break down large tasks<br/>• Review workflow timeout settings<br/><br/>**Example**: "Error: Job was cancelled" after 6 hours<br/>→ GitHub Actions default timeout is 6 hours<br/>→ Solution: Break large refactoring into smaller tasks<br/><br/>**Example**: Claude stops mid-task on complex implementations<br/>→ Task too large for single execution context<br/>→ Solution: Split into phases with explicit milestones<br/><br/>**See also**: [Performance Tuning - Workflow Optimization](docs/PERFORMANCE_TUNING.md#workflow-optimization)]
     
     %% Permission Issues
     PERMISSION -->|Repository Access| REPO_ACCESS[**🕐 Estimated Time: 15-30 minutes**<br/><br/>Check repository permissions:<br/>• Read/write access to repo<br/>• Actions execution permissions<br/>• Branch protection overrides<br/><br/>**Example**: "Error: Push to main branch blocked"<br/>→ Branch protection requires PR but Claude trying to push directly<br/>→ Solution: Configure Claude to create PRs instead<br/><br/>**Example**: "Error: Actions are disabled for this repository"<br/>→ Organization policy disabled GitHub Actions<br/>→ Solution: Request admin to enable Actions for repo]
-    PERMISSION -->|Token Scope| TOKEN_SCOPE[**🕐 Estimated Time: 10-20 minutes**<br/><br/>Verify token scopes:<br/>• repo (full repository access)<br/>• workflow (GitHub Actions)<br/>• write:packages (if needed)<br/><br/>**Example**: "Error: Resource not accessible" when updating workflows<br/>→ PAT missing 'workflow' scope<br/>→ Solution: Regenerate token with workflow scope<br/><br/>**Example**: "Error: Insufficient privileges" on private repos<br/>→ Token has public_repo but not full repo scope<br/>→ Solution: Grant 'repo' scope for private repository access]
+    PERMISSION -->|Token Scope| TOKEN_SCOPE[**🕐 Estimated Time: 10-20 minutes**<br/><br/>Verify token scopes:<br/>• repo (full repository access)<br/>• workflow (GitHub Actions)<br/>• write:packages (if needed)<br/><br/>**Example**: "Error: Resource not accessible" when updating workflows<br/>→ PAT missing 'workflow' scope<br/>→ Solution: Regenerate token with workflow scope<br/><br/>**Example**: "Error: Insufficient privileges" on private repos<br/>→ Token has public_repo but not full repo scope<br/>→ Solution: Grant 'repo' scope for private repository access<br/><br/>**See also**: [Configuration Guide - GitHub-Specific Variables](docs/CONFIGURATION.md#github-specific-variables)]
     PERMISSION -->|Organization Policies| ORG_POLICY[**🕐 Estimated Time: 30-120 minutes**<br/><br/>Check organization settings:<br/>• Third-party application access<br/>• GitHub Actions permissions<br/>• API usage policies<br/><br/>**Example**: "Error: Third-party application access restricted"<br/>→ Organization blocked external OAuth apps<br/>→ Solution: Admin must whitelist Claude Code app<br/><br/>**Example**: Actions fail with "Runner not found"<br/>→ Organization requires self-hosted runners<br/>→ Solution: Configure workflow for self-hosted runners]
     
     %% Solutions
@@ -615,12 +620,19 @@ npm run health-check
 
 ### Performance Optimization Tips
 
+For comprehensive performance optimization guidance, see the [**Performance Tuning Guide**](docs/PERFORMANCE_TUNING.md).
+
 #### Workflow Efficiency
 - Use dependency caching for Node.js projects
 - Implement conditional job execution based on file changes
 - Use matrix strategies for parallel testing
 - Monitor workflow execution times with the health check system
 - **Use the performance analyzer**: Run `npm run performance:analyze` to get detailed insights
+
+**See also:**
+- [Performance Tuning - Workflow Optimization](docs/PERFORMANCE_TUNING.md#workflow-optimization)
+- [Performance Tuning - Configuration Tuning](docs/PERFORMANCE_TUNING.md#configuration-tuning)
+- [Configuration Guide - Performance Testing](docs/CONFIGURATION.md#performance-testing-configuration-changes)
 
 #### Resource Management
 - **Automated cleanup**: Use `npm run maintenance:cleanup` instead of manual deletion
@@ -634,6 +646,11 @@ npm run health-check
 - Use the performance analyzer to identify high API usage workflows
 - Consider implementing request caching in frequently triggered workflows
 - Review workflow trigger frequency and optimize where possible
+
+**See also:**
+- [Performance Tuning - Rate Limit Management](docs/PERFORMANCE_TUNING.md#rate-limit-management)
+- [Performance Tuning - Caching Strategies](docs/PERFORMANCE_TUNING.md#caching-strategies)
+- [Configuration Guide - Cache Configuration](docs/CONFIGURATION.md#cache-configuration-options)
 
 ### Security Best Practices
 

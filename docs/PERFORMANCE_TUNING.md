@@ -2,6 +2,11 @@
 
 This comprehensive guide provides detailed instructions for optimizing the performance of Claude Code Auto Workflows, including configuration tuning, resource optimization, and troubleshooting performance issues.
 
+**Related Documentation:**
+- [Configuration Guide](CONFIGURATION.md) - Core configuration options and validation
+- [Main README Troubleshooting](../README.md#troubleshooting-guide) - General troubleshooting workflow
+- [Advanced Configuration](ADVANCED.md) - Complex configuration patterns
+
 ## Table of Contents
 
 - [Quick Performance Checklist](#quick-performance-checklist)
@@ -93,6 +98,8 @@ flowchart TD
 ### Core Configuration Options
 
 All configuration options are defined in `scripts/config/default.conf` and can be overridden by environment variables.
+
+**See also:** [Configuration Guide - Configuration Options Reference](CONFIGURATION.md#configuration-options-reference)
 
 #### Parallel Processing Configuration
 
@@ -274,6 +281,8 @@ nice -n -5 ./scripts/analyze-performance.sh
 
 The system implements multiple cache levels for optimal performance:
 
+**See also:** [Configuration Guide - Cache Configuration](CONFIGURATION.md#cache-configuration-options)
+
 #### Level 1: API Response Cache
 - **TTL**: 5 minutes (github-api.sh)
 - **Purpose**: Reduce GitHub API calls
@@ -345,6 +354,8 @@ cleanup_analysis_cache() {
 ## Rate Limit Management
 
 ### GitHub API Rate Limits
+
+**See also:** [Configuration Guide - Rate Limiting Options](CONFIGURATION.md#rate-limiting-options)
 
 #### Understanding Rate Limits
 - **Personal Access Token**: 5,000 requests/hour
@@ -699,6 +710,10 @@ profile_memory() {
 
 Use this decision tree to systematically diagnose and resolve performance issues:
 
+**See also:** 
+- [Main README Troubleshooting](../README.md#troubleshooting-guide) - General troubleshooting workflow
+- [Configuration Guide - Configuration Validation](CONFIGURATION.md#configuration-validation) - Configuration-specific troubleshooting
+
 ```mermaid
 flowchart TD
     PROBLEM([Performance Issue]) --> SYMPTOMS{What are the symptoms?}
@@ -773,6 +788,8 @@ flowchart TD
 - Rate limit warnings in logs
 - `429 Too Many Requests` errors
 - Slow response times
+
+**See also:** [Main README - API Rate Limiting Troubleshooting](../README.md#troubleshooting-guide)
 
 **Diagnosis:**
 ```bash
