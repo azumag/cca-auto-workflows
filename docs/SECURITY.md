@@ -731,20 +731,30 @@ export GITHUB_TOKEN="ghp_invalid_token_example"
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: GitHub token validation failed
-# HTTP 401: Bad credentials
-# Token may be expired, revoked, or malformed
-# Check token format and expiration date
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Token Authentication: GitHub token validation failed    │
+│ Code: GITHUB_TOKEN_VALIDATION_FAILED                           │
+│ Detail: HTTP 401 Bad credentials                               │
+│ Cause: Token may be expired, revoked, or malformed             │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 10-20 minutes
+# 🔴 CRITICAL - Authentication required for all operations
 
 # Recovery procedure:
 # 1. Generate new GitHub token
+# Refresh authentication with required scopes
 gh auth refresh -h github.com -s repo,read:org
 
 # 2. Update token securely
+# Set new token (replace with actual token)
 export GITHUB_TOKEN="ghp_new_valid_token"
+# Verify configuration accepts new token
 ./scripts/validate-config.sh
 
 # 3. Test token access
+# Verify token has API access
 curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/rate_limit
 
 # Prevention strategy:
@@ -761,10 +771,17 @@ export GITHUB_TOKEN="ghp_token_with_limited_scope"
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: Insufficient token permissions
-# HTTP 403: Token doesn't have required scope 'repo'
-# Current scopes: public_repo
-# Required scopes: repo, read:org, actions:read
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Token Authorization: Insufficient token permissions     │
+│ Code: GITHUB_TOKEN_INSUFFICIENT_SCOPE                          │
+│ Detail: HTTP 403 - Token missing required scope 'repo'         │
+│ Current Scopes: public_repo                                     │
+│ Required Scopes: repo, read:org, actions:read, metadata:read   │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 15-25 minutes
+# 🔴 CRITICAL - Operations blocked without proper permissions
 
 # Recovery procedure:
 # 1. Create token with required scopes
@@ -772,6 +789,7 @@ export GITHUB_TOKEN="ghp_token_with_limited_scope"
 # Create new token with: repo, read:org, actions:read, metadata:read
 
 # 2. Update configuration
+# Set new token with proper scopes
 export GITHUB_TOKEN="ghp_token_with_correct_scopes"
 
 # Prevention strategy:
