@@ -272,8 +272,29 @@ cleanup_cache() {
     local cache_dir="$1"
     local cache_ttl="$2"
     
+    # Validate required parameters
+    if [[ -z "$cache_dir" || -z "$cache_ttl" ]]; then
+        log_error "cleanup_cache: cache_dir and cache_ttl are required"
+        return 1
+    fi
+    
+    # Validate TTL is numeric and positive
+    if [[ ! "$cache_ttl" =~ ^[0-9]+$ ]] || [[ "$cache_ttl" -lt 1 ]]; then
+        log_error "cleanup_cache: invalid TTL value: $cache_ttl"
+        return 1
+    fi
+    
+    # Path traversal protection (consistent with other cache functions)
+    if [[ "$cache_dir" == *".."* ]]; then
+        log_error "cleanup_cache: path traversal detected in cache_dir: $cache_dir"
+        return 1
+    fi
+    
     if [[ -d "$cache_dir" ]]; then
-        find "$cache_dir" -type f -mmin +$((cache_ttl / 60)) -delete 2>/dev/null || true
+        local ttl_minutes=$((cache_ttl / 60))
+        if ! find "$cache_dir" -type f -mmin +$ttl_minutes -delete 2>/dev/null; then
+            log_warn "cleanup_cache: some files could not be cleaned from $cache_dir"
+        fi
     fi
 }
 
