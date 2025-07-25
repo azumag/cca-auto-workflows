@@ -212,6 +212,59 @@ line3"
 }
 
 # Cache cleanup tests
+@test "cleanup_cache: validates required parameters" {
+    run cleanup_cache "" "3600"
+    assert_failure
+    assert_output --partial "cleanup_cache: cache_dir and cache_ttl are required"
+    
+    run cleanup_cache "$TEST_CACHE_DIR" ""
+    assert_failure
+    assert_output --partial "cleanup_cache: cache_dir and cache_ttl are required"
+    
+    run cleanup_cache
+    assert_failure
+    assert_output --partial "cleanup_cache: cache_dir and cache_ttl are required"
+}
+
+@test "cleanup_cache: validates TTL is numeric and positive" {
+    setup_cache "$TEST_CACHE_DIR"
+    
+    # Test non-numeric TTL
+    run cleanup_cache "$TEST_CACHE_DIR" "invalid"
+    assert_failure
+    assert_output --partial "cleanup_cache: invalid TTL value: invalid"
+    
+    # Test negative TTL
+    run cleanup_cache "$TEST_CACHE_DIR" "-100"
+    assert_failure
+    assert_output --partial "cleanup_cache: invalid TTL value: -100"
+    
+    # Test zero TTL
+    run cleanup_cache "$TEST_CACHE_DIR" "0"
+    assert_failure
+    assert_output --partial "cleanup_cache: invalid TTL value: 0"
+    
+    # Test floating point TTL
+    run cleanup_cache "$TEST_CACHE_DIR" "3.14"
+    assert_failure
+    assert_output --partial "cleanup_cache: invalid TTL value: 3.14"
+}
+
+@test "cleanup_cache: prevents path traversal attacks" {
+    # Test various path traversal attempts
+    run cleanup_cache "../../../etc" "3600"
+    assert_failure
+    assert_output --partial "cleanup_cache: path traversal detected in cache_dir: ../../../etc"
+    
+    run cleanup_cache "/tmp/../../../etc" "3600"
+    assert_failure
+    assert_output --partial "cleanup_cache: path traversal detected in cache_dir: /tmp/../../../etc"
+    
+    run cleanup_cache "cache/../sensitive" "3600"
+    assert_failure
+    assert_output --partial "cleanup_cache: path traversal detected in cache_dir: cache/../sensitive"
+}
+
 @test "cleanup_cache: removes expired files" {
     setup_cache "$TEST_CACHE_DIR"
     
@@ -319,7 +372,7 @@ line3"
     assert_output --partial "1 cached entries"
     
     # 5. Cleanup
-    run cleanup_cache "$TEST_CACHE_DIR" "0"  # Remove all files
+    run cleanup_cache "$TEST_CACHE_DIR" "1"  # Remove all files (1 second TTL)
     assert_success
     
     # 6. Verify cleanup
