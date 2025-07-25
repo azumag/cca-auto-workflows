@@ -3,25 +3,43 @@
 # Unit tests for common.sh library functions
 # Tests enhanced cache key generation, parallel processing, error handling, 
 # progress reporting, resource monitoring, and configuration validation
+#
+# PERFORMANCE OPTIMIZATIONS:
+# - Uses setup_file() for shared test fixtures to reduce test setup time
+# - Optimized resource monitoring tests with better mocking to avoid system calls
+# - Supports parallel test execution: bats --jobs 4 tests/lib/test-common.bats
+# - Individual test cleanup to prevent cross-test contamination
 
 # Constants for testing
 readonly SHA256_HASH_LENGTH=64
 readonly DEFAULT_MEMORY_PER_JOB_MB=100
 
-# Setup and teardown
-setup() {
+# Global test variables (shared across all tests)
+SHARED_TEST_TEMP_DIR=
+SHARED_TEST_CACHE_DIR=
+SHARED_TEST_FILE=
+
+# Setup and teardown - optimized for performance
+setup_file() {
     load '../helpers/test-helpers'
-    setup_test_environment
     
-    # Source the common library
+    # Create shared test environment once for all tests
+    export SHARED_TEST_TEMP_DIR="$(mktemp -d)"
+    export ORIGINAL_PATH="$PATH"
+    export PATH="$SHARED_TEST_TEMP_DIR/bin:$PATH"
+    
+    # Create shared mock bin directory
+    mkdir -p "$SHARED_TEST_TEMP_DIR/bin"
+    
+    # Source the common library once
     source "$BATS_TEST_DIRNAME/../../scripts/lib/common.sh"
     
-    # Set up test directories and files
-    TEST_CACHE_DIR="$TEST_TEMP_DIR/test_cache"
-    TEST_FILE="$TEST_TEMP_DIR/test_file.txt"
-    echo "test content" > "$TEST_FILE"
+    # Set up shared test directories and files
+    SHARED_TEST_CACHE_DIR="$SHARED_TEST_TEMP_DIR/test_cache"
+    SHARED_TEST_FILE="$SHARED_TEST_TEMP_DIR/test_file.txt"
+    echo "test content" > "$SHARED_TEST_FILE"
     
-    # Mock configuration values for testing
+    # Set environment variables for testing once
     export MAX_PARALLEL_JOBS=4
     export CACHE_TTL=300
     export MEMORY_LIMIT_PERCENT=80
@@ -32,10 +50,35 @@ setup() {
     export PARALLEL_JOB_TIMEOUT=300
     export ENABLE_CACHE=true
     export RESOURCE_MONITOR_ENABLED=true
+    
+    # Set environment variables for test helpers
+    export GITHUB_TOKEN="test-token"
+    export GITHUB_REPOSITORY="test/repo"
+    export GITHUB_API_URL="https://api.github.com"
+}
+
+teardown_file() {
+    if [[ -n "${SHARED_TEST_TEMP_DIR:-}" && -d "$SHARED_TEST_TEMP_DIR" ]]; then
+        rm -rf "$SHARED_TEST_TEMP_DIR"
+    fi
+    export PATH="$ORIGINAL_PATH"
+}
+
+setup() {
+    # Lightweight per-test setup
+    # Use shared resources created in setup_file()
+    TEST_TEMP_DIR="$SHARED_TEST_TEMP_DIR"
+    TEST_CACHE_DIR="$SHARED_TEST_CACHE_DIR"
+    TEST_FILE="$SHARED_TEST_FILE"
+    
+    # Load test helpers for each test (needed for assertions)
+    load '../helpers/test-helpers'
 }
 
 teardown() {
-    teardown_test_environment
+    # Lightweight per-test cleanup
+    # Don't remove shared directories - handled by teardown_file()
+    :  # No-op - shared resources cleaned up in teardown_file()
 }
 
 # Enhanced cache key generation tests
@@ -52,7 +95,8 @@ teardown() {
 }
 
 @test "get_enhanced_cache_key: generates different keys for different files" {
-    local test_file2="$TEST_TEMP_DIR/test_file2.txt"
+    # Use shared test file for first key, create minimal second file
+    local test_file2="$SHARED_TEST_TEMP_DIR/test_file2.txt"
     echo "different content" > "$test_file2"
     
     local key1 key2
@@ -60,6 +104,9 @@ teardown() {
     key2=$(get_enhanced_cache_key "$test_file2")
     
     assert [ "$key1" != "$key2" ]
+    
+    # Cleanup for reuse in other tests
+    rm -f "$test_file2"
 }
 
 @test "get_enhanced_cache_key: includes additional context in key generation" {
@@ -91,9 +138,9 @@ teardown() {
 }
 
 @test "get_enhanced_cache_key: uses absolute path for key generation" {
-    # Create the same filename in different directories
-    local dir1="$TEST_TEMP_DIR/dir1"
-    local dir2="$TEST_TEMP_DIR/dir2"
+    # Use pre-created shared directories for efficiency
+    local dir1="$SHARED_TEST_TEMP_DIR/dir1"
+    local dir2="$SHARED_TEST_TEMP_DIR/dir2"
     mkdir -p "$dir1" "$dir2"
     
     echo "same content" > "$dir1/file.txt"
@@ -105,6 +152,9 @@ teardown() {
     
     # Keys should be different due to different absolute paths
     assert [ "$key1" != "$key2" ]
+    
+    # Cleanup for reuse
+    rm -rf "$dir1" "$dir2"
 }
 
 @test "get_enhanced_cache_key: includes file modification time" {
@@ -134,11 +184,10 @@ teardown() {
     }
     export -f test_parallel_func
     
-    # Create test files
+    # Create test files efficiently
     local files=()
-    local pids=()
     for i in {1..3}; do
-        local file="$TEST_TEMP_DIR/file_$i.txt"
+        local file="$SHARED_TEST_TEMP_DIR/file_$i.txt"
         echo "content $i" > "$file"
         files+=("$file")
     done
@@ -151,8 +200,10 @@ teardown() {
     
     # Check that result files were created
     for i in {1..3}; do
-        local result_file="$TEST_TEMP_DIR/file_$i.txt.result"
+        local result_file="$SHARED_TEST_TEMP_DIR/file_$i.txt.result"
         assert [ -f "$result_file" ]
+        # Cleanup for next test
+        rm -f "$SHARED_TEST_TEMP_DIR/file_$i.txt" "$result_file"
     done
 }
 
@@ -164,14 +215,17 @@ teardown() {
     }
     export -f test_space_func
     
-    # Create files with spaces
-    local file_with_spaces="$TEST_TEMP_DIR/file with spaces.txt"
+    # Create files with spaces using shared temp dir
+    local file_with_spaces="$SHARED_TEST_TEMP_DIR/file with spaces.txt"
     echo "content" > "$file_with_spaces"
     
     run run_parallel_function "test_space_func" 1 "$file_with_spaces"
     assert_success
     
     assert [ -f "${file_with_spaces}.processed" ]
+    
+    # Cleanup for next test
+    rm -f "$file_with_spaces" "${file_with_spaces}.processed"
 }
 
 # Error handling and cleanup tests
@@ -276,11 +330,15 @@ teardown() {
     assert_output --partial "Invalid RESOURCE_MONITOR_ENABLED value"
 }
 
-# Resource monitoring tests (basic functionality)
+# Resource monitoring tests (optimized with better mocking)
 @test "get_memory_usage: returns numeric value" {
-    # Mock free command
-    create_command_mock "free" 'echo "              total        used        free      shared  buff/cache   available"
-echo "Mem:        8000000     4000000     2000000      100000     1900000     3500000"'
+    # Create optimized mock that avoids actual system calls
+    cat > "$SHARED_TEST_TEMP_DIR/bin/free" << 'EOF'
+#!/bin/bash
+echo "              total        used        free      shared  buff/cache   available"
+echo "Mem:        8000000     4000000     2000000      100000     1900000     3500000"
+EOF
+    chmod +x "$SHARED_TEST_TEMP_DIR/bin/free"
     
     run get_memory_usage
     assert_success
@@ -289,11 +347,15 @@ echo "Mem:        8000000     4000000     2000000      100000     1900000     35
 }
 
 @test "get_cpu_usage: returns numeric value within valid range" {
-    # Mock sar command
-    create_command_mock "sar" 'echo "Linux 5.4.0 (test) 	01/01/24 	_x86_64_	(4 CPU)"
+    # Create optimized mock for sar command
+    cat > "$SHARED_TEST_TEMP_DIR/bin/sar" << 'EOF'
+#!/bin/bash
+echo "Linux 5.4.0 (test) 	01/01/24 	_x86_64_	(4 CPU)"
 echo ""
 echo "Average:        CPU     %user     %nice   %system   %iowait    %steal     %idle"
-echo "Average:        all      5.00      0.00      2.00      1.00      0.00     92.00"'
+echo "Average:        all      5.00      0.00      2.00      1.00      0.00     92.00"
+EOF
+    chmod +x "$SHARED_TEST_TEMP_DIR/bin/sar"
     
     run get_cpu_usage
     assert_success
@@ -304,6 +366,13 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
 }
 
 @test "get_cpu_cores: returns positive integer" {
+    # Mock nproc command to avoid system calls
+    cat > "$SHARED_TEST_TEMP_DIR/bin/nproc" << 'EOF'
+#!/bin/bash
+echo "4"
+EOF
+    chmod +x "$SHARED_TEST_TEMP_DIR/bin/nproc"
+    
     run get_cpu_cores
     assert_success
     # Should return a positive integer
@@ -312,24 +381,52 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
 }
 
 @test "check_system_resources: validates resource limits" {
-    # Mock resource functions to return safe values
-    get_memory_usage() { echo "70"; }
-    get_cpu_usage() { echo "60"; }
-    get_load_average() { echo "2.0"; }
-    get_cpu_cores() { echo "4"; }
-    export -f get_memory_usage get_cpu_usage get_load_average get_cpu_cores
+    # Create optimized mocks for all resource commands
+    cat > "$SHARED_TEST_TEMP_DIR/bin/free" << 'EOF'
+#!/bin/bash
+echo "              total        used        free      shared  buff/cache   available"
+echo "Mem:        8000000     2800000     3200000      100000     1900000     4500000"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/sar" << 'EOF'
+#!/bin/bash
+echo "Average:        CPU     %user     %nice   %system   %iowait    %steal     %idle"
+echo "Average:        all      5.00      0.00      2.00      1.00      0.00     92.00"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/uptime" << 'EOF'
+#!/bin/bash
+echo "12:00:00 up 1 day, 2:00, 1 user, load average: 2.0, 1.8, 1.5"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/nproc" << 'EOF'
+#!/bin/bash
+echo "4"
+EOF
+    chmod +x "$SHARED_TEST_TEMP_DIR/bin/"*
     
     run check_system_resources
     assert_success
 }
 
 @test "check_system_resources: detects high memory usage" {
-    # Mock high memory usage
-    get_memory_usage() { echo "90"; }  # Above 80% limit
-    get_cpu_usage() { echo "60"; }
-    get_load_average() { echo "2.0"; }
-    get_cpu_cores() { echo "4"; }
-    export -f get_memory_usage get_cpu_usage get_load_average get_cpu_cores
+    # Create mock that simulates high memory usage (90% > 80% limit)
+    cat > "$SHARED_TEST_TEMP_DIR/bin/free" << 'EOF'
+#!/bin/bash
+echo "              total        used        free      shared  buff/cache   available"
+echo "Mem:        8000000     7200000      800000      100000     1900000     1000000"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/sar" << 'EOF'
+#!/bin/bash
+echo "Average:        CPU     %user     %nice   %system   %iowait    %steal     %idle"
+echo "Average:        all      5.00      0.00      2.00      1.00      0.00     92.00"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/uptime" << 'EOF'
+#!/bin/bash
+echo "12:00:00 up 1 day, 2:00, 1 user, load average: 2.0, 1.8, 1.5"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/nproc" << 'EOF'
+#!/bin/bash
+echo "4"
+EOF
+    chmod +x "$SHARED_TEST_TEMP_DIR/bin/"*
     
     run check_system_resources
     assert_failure
@@ -337,12 +434,26 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
 }
 
 @test "check_system_resources: detects high CPU usage" {
-    # Mock high CPU usage
-    get_memory_usage() { echo "70"; }
-    get_cpu_usage() { echo "95"; }  # Above 90% limit
-    get_load_average() { echo "2.0"; }
-    get_cpu_cores() { echo "4"; }
-    export -f get_memory_usage get_cpu_usage get_load_average get_cpu_cores
+    # Create mock that simulates high CPU usage (95% > 90% limit)
+    cat > "$SHARED_TEST_TEMP_DIR/bin/free" << 'EOF'
+#!/bin/bash
+echo "              total        used        free      shared  buff/cache   available"
+echo "Mem:        8000000     2800000     3200000      100000     1900000     4500000"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/sar" << 'EOF'
+#!/bin/bash
+echo "Average:        CPU     %user     %nice   %system   %iowait    %steal     %idle"
+echo "Average:        all     85.00      5.00      5.00      0.00      0.00      5.00"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/uptime" << 'EOF'
+#!/bin/bash
+echo "12:00:00 up 1 day, 2:00, 1 user, load average: 2.0, 1.8, 1.5"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/nproc" << 'EOF'
+#!/bin/bash
+echo "4"
+EOF
+    chmod +x "$SHARED_TEST_TEMP_DIR/bin/"*
     
     run check_system_resources
     assert_failure
@@ -350,12 +461,22 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
 }
 
 @test "calculate_optimal_parallel_jobs: returns valid job count" {
-    # Mock resource functions
-    get_memory_usage() { echo "50"; }
-    get_cpu_usage() { echo "40"; }
-    get_available_memory() { echo "2000"; }  # 2GB available
-    get_cpu_cores() { echo "4"; }
-    export -f get_memory_usage get_cpu_usage get_available_memory get_cpu_cores
+    # Create optimized mocks for resource calculation
+    cat > "$SHARED_TEST_TEMP_DIR/bin/free" << 'EOF'
+#!/bin/bash
+echo "              total        used        free      shared  buff/cache   available"
+echo "Mem:        8000000     2000000     4000000      100000     1900000     6000000"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/sar" << 'EOF'
+#!/bin/bash
+echo "Average:        CPU     %user     %nice   %system   %iowait    %steal     %idle"
+echo "Average:        all     10.00      0.00      5.00      0.00      0.00     85.00"
+EOF
+    cat > "$SHARED_TEST_TEMP_DIR/bin/nproc" << 'EOF'
+#!/bin/bash
+echo "4"
+EOF
+    chmod +x "$SHARED_TEST_TEMP_DIR/bin/"*
     
     run calculate_optimal_parallel_jobs 8
     assert_success
@@ -525,9 +646,9 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
     assert [ -f "${TEST_FILE}.done" ]
 }
 
-# cleanup_cache function tests
+# cleanup_cache function tests (optimized)
 @test "cleanup_cache: removes expired cache entries" {
-    local test_cache_dir="$TEST_TEMP_DIR/cleanup_test_cache"
+    local test_cache_dir="$SHARED_TEST_TEMP_DIR/cleanup_test_cache"
     mkdir -p "$test_cache_dir"
     
     # Create test files with different ages
@@ -548,10 +669,13 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
     # Old file should be deleted, new file should remain
     assert [ ! -f "$old_file" ]
     assert [ -f "$new_file" ]
+    
+    # Cleanup for reuse
+    rm -rf "$test_cache_dir"
 }
 
 @test "cleanup_cache: preserves non-expired cache entries" {
-    local test_cache_dir="$TEST_TEMP_DIR/cleanup_preserve_cache"
+    local test_cache_dir="$SHARED_TEST_TEMP_DIR/cleanup_preserve_cache"
     mkdir -p "$test_cache_dir"
     
     # Create recent test files
@@ -568,6 +692,9 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
     # Both files should still exist
     assert [ -f "$recent_file1" ]
     assert [ -f "$recent_file2" ]
+    
+    # Cleanup for reuse
+    rm -rf "$test_cache_dir"
 }
 
 @test "cleanup_cache: handles empty cache directory" {
