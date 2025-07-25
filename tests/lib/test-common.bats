@@ -123,7 +123,7 @@ teardown() {
 @test "run_parallel_function: validates function exists" {
     run run_parallel_function "non_existent_function" 2 "$TEST_FILE"
     assert_failure
-    assert_output --partial "Function non_existent_function not found"
+    assert_output --partial "run_parallel_function: function not found: non_existent_function"
 }
 
 @test "run_parallel_function: processes files in parallel" {
@@ -229,12 +229,12 @@ teardown() {
     MAX_PARALLEL_JOBS="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MAX_PARALLEL_JOBS value"
+    assert_output --partial "validate_config: MAX_PARALLEL_JOBS must be >= 1, got:"
     
     MAX_PARALLEL_JOBS="0"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MAX_PARALLEL_JOBS value"
+    assert_output --partial "validate_config: MAX_PARALLEL_JOBS must be >= 1, got:"
     
     MAX_PARALLEL_JOBS="4"
     # This may still fail due to other config values, but this specific error shouldn't occur
@@ -244,36 +244,36 @@ teardown() {
     CACHE_TTL="30"  # Below minimum of 60
     run validate_config
     assert_failure
-    assert_output --partial "Invalid CACHE_TTL value"
+    assert_output --partial "validate_config: CACHE_TTL must be >= 60 seconds, got:"
     
     CACHE_TTL="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid CACHE_TTL value"
+    assert_output --partial "validate_config: CACHE_TTL must be >= 60 seconds, got:"
 }
 
 @test "validate_config: validates MEMORY_LIMIT_PERCENT" {
     MEMORY_LIMIT_PERCENT="150"  # Above maximum of 100
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MEMORY_LIMIT_PERCENT value"
+    assert_output --partial "validate_config: MEMORY_LIMIT_PERCENT must be 1-100, got:"
     
     MEMORY_LIMIT_PERCENT="0"  # Below minimum of 1
     run validate_config
     assert_failure
-    assert_output --partial "Invalid MEMORY_LIMIT_PERCENT value"
+    assert_output --partial "validate_config: MEMORY_LIMIT_PERCENT must be 1-100, got:"
 }
 
 @test "validate_config: validates boolean values" {
     ENABLE_CACHE="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid ENABLE_CACHE value"
+    assert_output --partial "validate_config: ENABLE_CACHE must be true or false, got:"
     
     RESOURCE_MONITOR_ENABLED="invalid"
     run validate_config
     assert_failure
-    assert_output --partial "Invalid RESOURCE_MONITOR_ENABLED value"
+    assert_output --partial "validate_config: RESOURCE_MONITOR_ENABLED must be true or false, got:"
 }
 
 # Resource monitoring tests (basic functionality)
@@ -368,18 +368,18 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
 @test "calculate_optimal_parallel_jobs: validates input" {
     run calculate_optimal_parallel_jobs "invalid"
     assert_failure
-    assert_output --partial "Invalid base_jobs"
+    assert_output --partial "calculate_optimal_parallel_jobs: base_jobs must be positive integer, got:"
     
     run calculate_optimal_parallel_jobs "0"
     assert_failure
-    assert_output --partial "Invalid base_jobs"
+    assert_output --partial "calculate_optimal_parallel_jobs: base_jobs must be positive integer, got:"
 }
 
 # Cache setup tests (extending existing coverage)
 @test "setup_cache: validates cache directory path for security" {
     run setup_cache "../../../tmp/malicious_cache"
     assert_failure
-    assert_output --partial "Path traversal detected"
+    assert_output --partial "setup_cache: path traversal detected in cache directory:"
 }
 
 @test "setup_cache: creates cache with custom permissions" {
@@ -440,7 +440,7 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
     
     run check_command "non_existent_command_12345"
     assert_failure
-    assert_output --partial "Command 'non_existent_command_12345' is required but not found"
+    assert_output --partial "check_command: command not found: non_existent_command_12345"
 }
 
 @test "check_command: uses custom error message" {
@@ -506,8 +506,7 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
 @test "run_parallel_with_resource_limits: validates function name for security" {
     run run_parallel_with_resource_limits "invalid-function-name!" "$TEST_FILE"
     assert_failure
-    assert_output --partial "Invalid function name"
-    assert_output --partial "contains unsafe characters"
+    assert_output --partial "run_parallel_with_resource_limits: function name contains unsafe characters:"
 }
 
 @test "run_parallel_with_resource_limits: falls back when monitoring disabled" {
