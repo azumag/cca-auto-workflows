@@ -31,55 +31,55 @@ load_config() {
 validate_config() {
     # Validate numeric values
     if [[ ! "$MAX_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$MAX_PARALLEL_JOBS" -lt 1 ]]; then
-        log_error "Invalid MAX_PARALLEL_JOBS value: $MAX_PARALLEL_JOBS"
+        log_error "validate_config: MAX_PARALLEL_JOBS must be >= 1, got: $MAX_PARALLEL_JOBS"
         return 1
     fi
     
     if [[ ! "$CACHE_TTL" =~ ^[0-9]+$ ]] || [[ "$CACHE_TTL" -lt 60 ]]; then
-        log_error "Invalid CACHE_TTL value: $CACHE_TTL (minimum 60 seconds)"
+        log_error "validate_config: CACHE_TTL must be >= 60 seconds, got: $CACHE_TTL"
         return 1
     fi
     
     # Validate resource monitoring configuration
     if [[ ! "$MEMORY_LIMIT_PERCENT" =~ ^[0-9]+$ ]] || [[ "$MEMORY_LIMIT_PERCENT" -lt 1 ]] || [[ "$MEMORY_LIMIT_PERCENT" -gt 100 ]]; then
-        log_error "Invalid MEMORY_LIMIT_PERCENT value: $MEMORY_LIMIT_PERCENT (must be 1-100)"
+        log_error "validate_config: MEMORY_LIMIT_PERCENT must be 1-100, got: $MEMORY_LIMIT_PERCENT"
         return 1
     fi
     
     if [[ ! "$CPU_LIMIT_PERCENT" =~ ^[0-9]+$ ]] || [[ "$CPU_LIMIT_PERCENT" -lt 1 ]] || [[ "$CPU_LIMIT_PERCENT" -gt 100 ]]; then
-        log_error "Invalid CPU_LIMIT_PERCENT value: $CPU_LIMIT_PERCENT (must be 1-100)"
+        log_error "validate_config: CPU_LIMIT_PERCENT must be 1-100, got: $CPU_LIMIT_PERCENT"
         return 1
     fi
     
     if [[ ! "$MIN_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$MIN_PARALLEL_JOBS" -lt 1 ]]; then
-        log_error "Invalid MIN_PARALLEL_JOBS value: $MIN_PARALLEL_JOBS (must be >= 1)"
+        log_error "validate_config: MIN_PARALLEL_JOBS must be >= 1, got: $MIN_PARALLEL_JOBS"
         return 1
     fi
     
     if [[ ! "$MAX_SYSTEM_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$MAX_SYSTEM_PARALLEL_JOBS" -lt 1 ]]; then
-        log_error "Invalid MAX_SYSTEM_PARALLEL_JOBS value: $MAX_SYSTEM_PARALLEL_JOBS (must be >= 1)"
+        log_error "validate_config: MAX_SYSTEM_PARALLEL_JOBS must be >= 1, got: $MAX_SYSTEM_PARALLEL_JOBS"
         return 1
     fi
     
     if [[ ! "$RESOURCE_CHECK_INTERVAL" =~ ^[0-9]+$ ]] || [[ "$RESOURCE_CHECK_INTERVAL" -lt 1 ]]; then
-        log_error "Invalid RESOURCE_CHECK_INTERVAL value: $RESOURCE_CHECK_INTERVAL (must be >= 1)"
+        log_error "validate_config: RESOURCE_CHECK_INTERVAL must be >= 1, got: $RESOURCE_CHECK_INTERVAL"
         return 1
     fi
     
     if [[ ! "$PARALLEL_JOB_TIMEOUT" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOB_TIMEOUT" -lt 1 ]]; then
-        log_error "Invalid PARALLEL_JOB_TIMEOUT value: $PARALLEL_JOB_TIMEOUT (must be >= 1)"
+        log_error "validate_config: PARALLEL_JOB_TIMEOUT must be >= 1, got: $PARALLEL_JOB_TIMEOUT"
         return 1
     fi
     
     # Validate boolean values
     case "$ENABLE_CACHE" in
         true|false) ;;
-        *) log_error "Invalid ENABLE_CACHE value: $ENABLE_CACHE (must be true or false)"; return 1 ;;
+        *) log_error "validate_config: ENABLE_CACHE must be true or false, got: $ENABLE_CACHE"; return 1 ;;
     esac
     
     case "$RESOURCE_MONITOR_ENABLED" in
         true|false) ;;
-        *) log_error "Invalid RESOURCE_MONITOR_ENABLED value: $RESOURCE_MONITOR_ENABLED (must be true or false)"; return 1 ;;
+        *) log_error "validate_config: RESOURCE_MONITOR_ENABLED must be true or false, got: $RESOURCE_MONITOR_ENABLED"; return 1 ;;
     esac
 }
 
@@ -175,19 +175,33 @@ log_header() {
     echo -e "${BLUE}[HEADER]${NC} $*"
 }
 
+# Error Message Standards
+# All error messages in this library follow a standardized format for consistency:
+# Format: log_error "function_name: error description with context"
+# 
+# Examples:
+#   log_error "validate_config: MAX_PARALLEL_JOBS must be >= 1, got: $value"
+#   log_error "get_enhanced_cache_key: file parameter is required"
+#   log_error "save_to_cache: invalid cache key: $cache_key"
+#
+# Benefits:
+# - Consistent user experience across all functions
+# - Easy identification of which function generated the error
+# - Clear context about what went wrong and expected values
+
 # Cache management functions
 setup_cache() {
     local cache_dir="$1"
     local cache_perms="${2:-700}"
     
     if [[ -z "$cache_dir" ]]; then
-        log_error "Cache directory not specified"
+        log_error "setup_cache: cache directory parameter is required"
         return 1
     fi
     
     # Validate cache directory path
     if [[ "$cache_dir" =~ \.\./|/\.\. ]]; then
-        log_error "Path traversal detected in cache directory: $cache_dir"
+        log_error "setup_cache: path traversal detected in cache directory: $cache_dir"
         return 1
     fi
     
@@ -320,7 +334,7 @@ run_parallel_function() {
     
     # Check if function exists
     if ! declare -F "$function_name" > /dev/null; then
-        log_error "Function $function_name not found"
+        log_error "run_parallel_function: function not found: $function_name"
         return 1
     fi
     
@@ -349,7 +363,7 @@ check_command() {
     local error_msg="$2"
     
     if ! command -v "$cmd" &> /dev/null; then
-        log_error "${error_msg:-Command '$cmd' is required but not found}"
+        log_error "check_command: ${error_msg:-command not found: $cmd}"
         return 1
     fi
 }
@@ -361,7 +375,7 @@ wait_for_jobs() {
     
     for pid in "${pids[@]}"; do
         if ! wait "$pid"; then
-            log_error "Background job failed (PID: $pid)"
+            log_error "wait_for_jobs: background job failed (PID: $pid)"
             ((failed_count++))
         fi
     done
@@ -525,7 +539,7 @@ calculate_optimal_parallel_jobs() {
     
     # Validate input
     if [[ ! "$base_jobs" =~ ^[0-9]+$ ]] || [[ "$base_jobs" -lt 1 ]]; then
-        log_error "Invalid base_jobs: $base_jobs (must be positive integer)"
+        log_error "calculate_optimal_parallel_jobs: base_jobs must be positive integer, got: $base_jobs"
         return 1
     fi
     
@@ -582,7 +596,7 @@ run_parallel_with_resource_limits() {
     
     # Validate function name to prevent command injection
     if [[ ! "$function_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-        log_error "Invalid function name: $function_name (contains unsafe characters)"
+        log_error "run_parallel_with_resource_limits: function name contains unsafe characters: $function_name"
         return 1
     fi
     
@@ -599,7 +613,7 @@ run_parallel_with_resource_limits() {
     
     # Check if function exists
     if ! declare -F "$function_name" > /dev/null; then
-        log_error "Function $function_name not found"
+        log_error "run_parallel_with_resource_limits: function not found: $function_name"
         return 1
     fi
     
@@ -618,9 +632,9 @@ run_parallel_with_resource_limits() {
     ' _ "${input_files[@]}"; then
         exit_code=$?
         if [[ $exit_code -eq 124 ]]; then
-            log_error "Parallel job execution timed out after ${PARALLEL_JOB_TIMEOUT}s"
+            log_error "run_parallel_with_resource_limits: parallel job execution timed out after ${PARALLEL_JOB_TIMEOUT}s"
         else
-            log_error "Parallel job execution failed with exit code $exit_code"
+            log_error "run_parallel_with_resource_limits: parallel job execution failed with exit code $exit_code"
         fi
     fi
     
@@ -696,7 +710,7 @@ run_with_memory_limit() {
     
     local exit_code=$?
     if [[ $exit_code -eq 124 ]]; then
-        log_error "Command timed out after ${PARALLEL_JOB_TIMEOUT}s: $command"
+        log_error "run_with_memory_limit: command timed out after ${PARALLEL_JOB_TIMEOUT}s: $command"
     elif [[ $exit_code -ne 0 ]]; then
         log_warn "Command failed (possibly due to memory limit): $command"
     fi
