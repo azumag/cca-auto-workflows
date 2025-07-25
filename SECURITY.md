@@ -189,8 +189,6 @@ This project uses GitHub Actions workflows which have specific security consider
 
 > ℹ️ **LOW PRIORITY**: Important awareness items that don't block implementation but require understanding
 
-> ℹ️ **LOW PRIORITY**: Important awareness, but not blocking
-
 ### GitHub Actions Limitations
 
 1. **Workflow Modification Restrictions**
@@ -281,8 +279,6 @@ This project uses GitHub Actions workflows which have specific security consider
 ## Compliance and Standards 🔵 LOW
 
 > ℹ️ **LOW PRIORITY**: Reference information for security standards and compliance requirements
-
-> ℹ️ **LOW PRIORITY**: Reference information for security standards
 
 ### Standards Followed
 
