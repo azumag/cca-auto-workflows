@@ -507,7 +507,6 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
     run run_parallel_with_resource_limits "invalid-function-name!" "$TEST_FILE"
     assert_failure
     assert_output --partial "run_parallel_with_resource_limits: function name contains unsafe characters:"
-    assert_output --partial "contains unsafe characters"
 }
 
 @test "run_parallel_with_resource_limits: falls back when monitoring disabled" {
