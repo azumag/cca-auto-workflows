@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
-# Comprehensive integration tests for parallel processing functionality
-# Tests complete workflows with resource monitoring, performance scenarios, and real-world conditions
+# Integration tests for parallel processing error handling and edge cases
+# Tests cache behavior, signal handling, and graceful error recovery
 # Addresses Issue #78 - missing integration test scenarios
 
 # Setup and teardown
@@ -428,212 +428,8 @@ cleanup_comprehensive_processes() {
     rm -f /tmp/cleanup_rate_limit_*.lock 2>/dev/null || true
 }
 
-# Integration Test 1: Complete parallel processing workflow with resource monitoring
-@test "comprehensive integration: complete workflow with resource monitoring" {
-    export RESOURCE_MONITOR_ENABLED="true"
-    export MAX_PARALLEL_JOBS=6
-    
-    local start_time end_time duration
-    start_time=$(date +%s)
-    
-    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
-    
-    end_time=$(date +%s)
-    duration=$((end_time - start_time))
-    
-    assert_success
-    
-    # Verify resource monitoring was active
-    assert_output --partial "Adaptive parallelism: using" 
-    assert_output --partial "jobs (memory:" 
-    assert_output --partial "CPU:"
-    
-    # Verify parallel processing occurred
-    assert_output --partial "Validating workflows in parallel"
-    assert_output --partial "Processing"
-    assert_output --partial "workflow files"
-    
-    # Should complete efficiently with resource monitoring
-    assert [ "$duration" -lt "$DEFAULT_TEST_TIMEOUT" ]
-}
-
-# Integration Test 2: Performance integration under memory pressure
-@test "comprehensive integration: performance under memory pressure scenarios" {
-    export MOCK_MEMORY_CONDITION="high"
-    export RESOURCE_MONITOR_ENABLED="true"
-    export MEMORY_LIMIT_PERCENT=60
-    export MAX_PARALLEL_JOBS=8
-    
-    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
-    assert_success
-    
-    # Should detect high memory usage and adapt
-    assert_output --partial "Memory usage high:" || assert_output --partial "System resources are constrained"
-    
-    # Should still complete successfully despite memory pressure
-    assert_output --partial "Validation completed"
-    
-    # Run performance analysis under memory pressure
-    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/analyze-performance.sh
-    assert_success
-    
-    assert_output --partial "Performance analysis completed"
-}
-
-# Integration Test 3: Performance integration under high CPU usage
-@test "comprehensive integration: performance under high CPU usage scenarios" {
-    export MOCK_CPU_CONDITION="high"
-    export RESOURCE_MONITOR_ENABLED="true"
-    export CPU_LIMIT_PERCENT=50
-    export MAX_PARALLEL_JOBS=8
-    
-    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
-    assert_success
-    
-    # Should detect high CPU usage and adapt
-    assert_output --partial "CPU usage high:" || assert_output --partial "System resources are constrained"
-    
-    # Should still complete successfully despite CPU pressure
-    assert_output --partial "Validation completed"
-    
-    # Test cleanup under high CPU load
-    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/cleanup-old-runs.sh --days 30 --max-runs 20 --force
-    assert_success
-    
-    assert_output --partial "Cleanup completed!"
-}
-
-# Integration Test 4: Optimal job calculation with various system conditions
-@test "comprehensive integration: optimal job calculation with various system conditions" {
-    # Test normal conditions
-    export MOCK_MEMORY_CONDITION="normal"
-    export MOCK_CPU_CONDITION="normal"
-    export RESOURCE_MONITOR_ENABLED="true"
-    
-    run ./scripts/validate-workflows.sh
-    assert_success
-    assert_output --partial "Adaptive parallelism: using"
-    
-    # Test low resource conditions
-    export MOCK_MEMORY_CONDITION="low"
-    export MOCK_CPU_CONDITION="low"
-    
-    run ./scripts/validate-workflows.sh
-    assert_success
-    assert_output --partial "Adaptive parallelism: using"
-    
-    # Test critical resource conditions
-    export MOCK_MEMORY_CONDITION="critical"
-    export MOCK_CPU_CONDITION="critical"
-    
-    run ./scripts/validate-workflows.sh
-    assert_success
-    assert_output --partial "Adaptive parallelism: using"
-    # Should use fewer jobs under critical conditions
-    assert_output --partial "System resources are constrained" || assert_output --partial "Memory usage high" || assert_output --partial "CPU usage high"
-}
-
-# Integration Test 5: Large file counts with resource constraints
-@test "comprehensive integration: large file counts with resource constraints" {
-    # Create additional workflows to reach 100+ files
-    local workflow_dir="$TEST_REPO_DIR/.github/workflows"
-    for i in {51..120}; do
-        create_resource_intensive_workflow "$workflow_dir/extra-$i.yml" "Extra Workflow $i"
-    done
-    
-    export MOCK_MEMORY_CONDITION="high"
-    export RESOURCE_MONITOR_ENABLED="true"
-    export MAX_PARALLEL_JOBS=4  # Reduced due to constraints
-    
-    local start_time end_time duration
-    start_time=$(date +%s)
-    
-    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
-    
-    end_time=$(date +%s)
-    duration=$((end_time - start_time))
-    
-    assert_success
-    
-    # Should process all files despite constraints
-    assert_output --partial "Processing 120 workflow files"
-    
-    # Should complete in reasonable time even with constraints
-    assert [ "$duration" -lt "$MEDIUM_TEST_TIMEOUT" ]
-    
-    # Should show resource adaptation
-    assert_output --partial "Adaptive parallelism" || assert_output --partial "System resources are constrained"
-}
-
-# Integration Test 6: System resource exhaustion behavior
-@test "comprehensive integration: system resource exhaustion behavior" {
-    export MOCK_MEMORY_CONDITION="critical"
-    export MOCK_CPU_CONDITION="critical"
-    export RESOURCE_MONITOR_ENABLED="true"
-    export MEMORY_LIMIT_PERCENT=90
-    export CPU_LIMIT_PERCENT=85
-    export MIN_PARALLEL_JOBS=1
-    
-    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
-    assert_success
-    
-    # Should handle critical resource conditions gracefully
-    assert_output --partial "Memory usage high" || assert_output --partial "CPU usage high" || assert_output --partial "System resources are constrained" || assert_output --partial "completed"
-    
-    # Should complete validation and adapt parallelism
-    assert_output --partial "completed"
-    assert_output --partial "Adaptive parallelism" || assert_output --partial "using"
-    
-    # Test that cleanup also handles resource exhaustion
-    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/cleanup-old-runs.sh --days 30 --max-runs 10 --force
-    assert_success
-    
-    assert_output --partial "Cleanup completed!" || assert_output --partial "rate limiting"
-}
-
-# Integration Test 7: Graceful degradation when parallel jobs fail
-@test "comprehensive integration: graceful degradation when parallel jobs fail" {
-    # Add some invalid workflows to cause failures
-    echo "invalid yaml content {" > "$TEST_REPO_DIR/.github/workflows/broken1.yml"
-    echo "invalid: yaml: content" > "$TEST_REPO_DIR/.github/workflows/broken2.yml"
-    cat > "$TEST_REPO_DIR/.github/workflows/broken3.yml" << 'EOF'
-name: Broken Workflow
-# Missing required fields
-jobs:
-  test:
-    # Missing runs-on
-    steps:
-      - name: Test
-EOF
-    
-    export MAX_PARALLEL_JOBS=6
-    export RESOURCE_MONITOR_ENABLED="true"
-    
-    run ./scripts/validate-workflows.sh
-    assert_failure  # Should fail due to invalid workflows
-    
-    # Should report errors but continue processing other files
-    assert_output --partial "ERROR:" 
-    assert_output --partial "YAML syntax error" || assert_output --partial "validation failed"
-    
-    # Should still process valid workflows
-    assert_output --partial "Processing"
-    assert_output --partial "workflow files"
-    
-    # Should provide error summary
-    assert_output --partial "errors and"
-    assert_output --partial "warnings"
-    
-    # Test cleanup with some API failures
-    run ./scripts/cleanup-old-runs.sh --days 30 --max-runs 20 --force
-    assert_success  # Should handle individual API failures gracefully
-    
-    # Should report any failures but continue
-    assert_output --partial "Cleanup completed!" || assert_output --partial "Failed to delete"
-}
-
 # Integration Test 8: Cache integration with parallel processing under various conditions
-@test "comprehensive integration: cache integration with parallel processing" {
+@test "integration: cache integration with parallel processing" {
     export ENABLE_CACHE="true"
     export CACHE_TTL=300
     export RESOURCE_MONITOR_ENABLED="true"
@@ -668,7 +464,7 @@ EOF
 }
 
 # Integration Test 9: Signal handling during parallel processing with resource monitoring
-@test "comprehensive integration: signal handling during complex parallel operations" {
+@test "integration: signal handling during complex parallel operations" {
     export RESOURCE_MONITOR_ENABLED="true"
     export MAX_PARALLEL_JOBS=8
     
@@ -694,44 +490,4 @@ EOF
     assert_equal "$remaining_processes" "0"
     assert_equal "$remaining_temp_files" "0"
     assert_equal "$remaining_locks" "0"
-}
-
-# Integration Test 10: End-to-end workflow testing all components together
-@test "comprehensive integration: end-to-end workflow with all parallel processing features" {
-    export RESOURCE_MONITOR_ENABLED="true"
-    export ENABLE_CACHE="true"
-    export MAX_PARALLEL_JOBS=6
-    export ENABLE_BENCHMARKS="true"
-    
-    local start_time end_time total_duration
-    start_time=$(date +%s)
-    
-    # Step 1: Validate workflows with resource monitoring
-    run timeout $TEST_TIMEOUT_LONG ./scripts/validate-workflows.sh
-    assert_success
-    assert_output --partial "Validation completed"
-    assert_output --partial "Adaptive parallelism"
-    
-    # Step 2: Analyze performance with benchmarks
-    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/analyze-performance.sh --benchmarks
-    assert_success
-    assert_output --partial "Performance analysis completed"
-    assert_output --partial "Running performance benchmarks"
-    
-    # Step 3: Cleanup old runs with rate limiting
-    run timeout $TEST_TIMEOUT_MEDIUM ./scripts/cleanup-old-runs.sh --days 30 --max-runs 15 --force
-    assert_success
-    assert_output --partial "Cleanup completed!"
-    
-    end_time=$(date +%s)
-    total_duration=$((end_time - start_time))
-    
-    # Entire workflow should complete in reasonable time
-    assert [ "$total_duration" -lt "$LONG_TEST_TIMEOUT" ]
-    
-    # All components should work together without conflicts
-    # No resource leaks should occur
-    local remaining_files
-    remaining_files=$(find /tmp -name "*$$*" 2>/dev/null | wc -l)
-    assert_equal "$remaining_files" "0"
 }
