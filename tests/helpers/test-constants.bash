@@ -43,3 +43,11 @@ readonly MAX_WARNING_COUNT=100
 # Random range values for API rate limiting simulation
 readonly API_REMAINING_MIN=100
 readonly API_REMAINING_MAX=4900
+
+# Integration test constants
+readonly DEFAULT_WORKFLOW_COUNT=10
+readonly STRESS_TEST_WORKFLOW_COUNT=50
+readonly LARGE_SCALE_WORKFLOW_COUNT=120
+readonly DEFAULT_TEST_TIMEOUT=30
+readonly MEDIUM_TEST_TIMEOUT=60
+readonly LONG_TEST_TIMEOUT=120

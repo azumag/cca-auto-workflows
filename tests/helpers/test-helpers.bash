@@ -35,6 +35,9 @@ fi
 # Source test constants
 source "${BASH_SOURCE[0]%/*}/test-constants.bash"
 
+# Source integration test helpers  
+source "${BASH_SOURCE[0]%/*}/test-integration-helpers.bash"
+
 # Test environment setup
 setup_test_environment() {
     export TEST_TEMP_DIR="$(mktemp -d)"
