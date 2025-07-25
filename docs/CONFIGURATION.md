@@ -6,6 +6,11 @@ This guide covers core configuration options, environment variables, and basic s
 - [SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md) - Security overview and quick start guide
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Troubleshooting configuration issues
 - [ADVANCED.md](ADVANCED.md) - Advanced configuration patterns and version compatibility
+- [PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md) - Performance optimization using configuration settings
+
+**Cross-References:**
+- [Main README Troubleshooting](../README.md#troubleshooting-guide) - General troubleshooting workflow
+- [Performance Tuning - Configuration Tuning](PERFORMANCE_TUNING.md#configuration-tuning) - Performance-focused configuration
 
 ## Table of Contents
 
@@ -382,6 +387,8 @@ export MAX_PARALLEL_JOBS=$(nproc)
 - **Too high**: Can cause resource contention and system instability
 - **Optimal**: Usually 1-2x CPU core count
 
+**See also:** [Performance Tuning - Parallel Processing Optimization](PERFORMANCE_TUNING.md#parallel-processing-optimization)
+
 ### Cache Configuration Options
 
 | Option | Type | Default | Description | Valid Range |
@@ -401,6 +408,10 @@ export CACHE_TTL=3600   # 1 hour
 # Batch processing: Maximum TTL
 export CACHE_TTL=7200   # 2 hours
 ```
+
+**See also:** 
+- [Performance Tuning - Caching Strategies](PERFORMANCE_TUNING.md#caching-strategies)
+- [Performance Tuning - Cache Performance Issues](PERFORMANCE_TUNING.md#2-poor-cache-performance)
 
 ### Rate Limiting Options
 
@@ -424,6 +435,10 @@ export RATE_LIMIT_DELAY=2
 export RATE_LIMIT_REQUESTS_PER_MINUTE=60
 export RATE_LIMIT_DELAY=1
 ```
+
+**See also:** 
+- [Performance Tuning - Rate Limit Management](PERFORMANCE_TUNING.md#rate-limit-management)
+- [Main README - Rate Limiting Troubleshooting](../README.md#troubleshooting-guide)
 
 ### Logging Configuration Options
 
@@ -517,6 +532,8 @@ export OUTPUT_FILE="analysis-report.md"
 ## Configuration Validation
 
 The system performs comprehensive configuration validation to ensure all settings are valid and compatible.
+
+**See also:** [Performance Tuning - Troubleshooting Performance Issues](PERFORMANCE_TUNING.md#troubleshooting-performance-issues)
 
 ### Validation Process
 
@@ -1183,3 +1200,5 @@ This core configuration guide provides the essential information needed to confi
 - **[SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md)** - Comprehensive security practices for configuration management
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Systematic diagnosis and resolution of configuration issues
 - **[ADVANCED.md](ADVANCED.md)** - Advanced configuration patterns, version compatibility, and dynamic configurations
+- **[PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md)** - Performance optimization strategies using configuration settings
+- **[Main README Troubleshooting](../README.md#troubleshooting-guide)** - General troubleshooting workflow and decision tree
