@@ -4,7 +4,7 @@ This guide covers advanced configuration patterns, version compatibility, and dy
 
 **Related Documentation:**
 - [CONFIGURATION.md](CONFIGURATION.md) - Core configuration options and basic setup
-- [SECURITY.md](SECURITY.md) - Security considerations and best practices
+- [SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md) - Security overview and quick start guide
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Troubleshooting configuration issues
 
 ## Table of Contents
@@ -1398,5 +1398,5 @@ This advanced configuration guide provides sophisticated configuration managemen
 
 For foundational configuration topics, see the related documentation:
 - **[CONFIGURATION.md](CONFIGURATION.md)** - Core configuration options and basic setup
-- **[SECURITY.md](SECURITY.md)** - Security considerations and best practices
+- **[SECURITY-OVERVIEW.md](../SECURITY-OVERVIEW.md)** - Security overview and quick start guide
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Troubleshooting configuration issues
