@@ -524,3 +524,138 @@ echo "Average:        all      5.00      0.00      2.00      1.00      0.00     
     assert_success
     assert [ -f "${TEST_FILE}.done" ]
 }
+
+# cleanup_cache function tests
+@test "cleanup_cache: removes expired cache entries" {
+    local test_cache_dir="$TEST_TEMP_DIR/cleanup_test_cache"
+    mkdir -p "$test_cache_dir"
+    
+    # Create test files with different ages
+    local old_file="$test_cache_dir/old_file.cache"
+    local new_file="$test_cache_dir/new_file.cache"
+    
+    echo "old content" > "$old_file"
+    echo "new content" > "$new_file"
+    
+    # Make the old file appear older than 10 minutes (600 seconds TTL)
+    # Use touch to set modification time to 15 minutes ago
+    touch -t $(date -d '15 minutes ago' '+%Y%m%d%H%M.%S') "$old_file"
+    
+    # Run cleanup with 10 minute (600 second) TTL
+    run cleanup_cache "$test_cache_dir" 600
+    assert_success
+    
+    # Old file should be deleted, new file should remain
+    assert [ ! -f "$old_file" ]
+    assert [ -f "$new_file" ]
+}
+
+@test "cleanup_cache: preserves non-expired cache entries" {
+    local test_cache_dir="$TEST_TEMP_DIR/cleanup_preserve_cache"
+    mkdir -p "$test_cache_dir"
+    
+    # Create recent test files
+    local recent_file1="$test_cache_dir/recent1.cache"
+    local recent_file2="$test_cache_dir/recent2.cache"
+    
+    echo "recent content 1" > "$recent_file1"
+    echo "recent content 2" > "$recent_file2"
+    
+    # Run cleanup with 10 minute (600 second) TTL
+    run cleanup_cache "$test_cache_dir" 600
+    assert_success
+    
+    # Both files should still exist
+    assert [ -f "$recent_file1" ]
+    assert [ -f "$recent_file2" ]
+}
+
+@test "cleanup_cache: handles empty cache directory" {
+    local empty_cache_dir="$TEST_TEMP_DIR/empty_cache"
+    mkdir -p "$empty_cache_dir"
+    
+    # Run cleanup on empty directory
+    run cleanup_cache "$empty_cache_dir" 600
+    assert_success
+    
+    # Directory should still exist and be empty
+    assert [ -d "$empty_cache_dir" ]
+    assert [ -z "$(ls -A "$empty_cache_dir")" ]
+}
+
+@test "cleanup_cache: handles non-existent directory gracefully" {
+    local non_existent_dir="$TEST_TEMP_DIR/non_existent_cache"
+    
+    # Ensure directory doesn't exist
+    rm -rf "$non_existent_dir"
+    
+    # Run cleanup on non-existent directory
+    run cleanup_cache "$non_existent_dir" 600
+    assert_success
+    
+    # Directory should still not exist
+    assert [ ! -d "$non_existent_dir" ]
+}
+
+@test "cleanup_cache: handles mixed file ages correctly" {
+    local mixed_cache_dir="$TEST_TEMP_DIR/mixed_age_cache"
+    mkdir -p "$mixed_cache_dir"
+    
+    # Create files with different ages
+    local very_old_file="$mixed_cache_dir/very_old.cache"
+    local old_file="$mixed_cache_dir/old.cache"
+    local recent_file="$mixed_cache_dir/recent.cache"
+    local new_file="$mixed_cache_dir/new.cache"
+    
+    echo "very old content" > "$very_old_file"
+    echo "old content" > "$old_file"
+    echo "recent content" > "$recent_file"
+    echo "new content" > "$new_file"
+    
+    # Set different modification times
+    # Very old: 20 minutes ago
+    touch -t $(date -d '20 minutes ago' '+%Y%m%d%H%M.%S') "$very_old_file"
+    # Old: 12 minutes ago
+    touch -t $(date -d '12 minutes ago' '+%Y%m%d%H%M.%S') "$old_file"
+    # Recent: 5 minutes ago (within TTL)
+    touch -t $(date -d '5 minutes ago' '+%Y%m%d%H%M.%S') "$recent_file"
+    # New: current time (definitely within TTL)
+    
+    # Run cleanup with 10 minute (600 second) TTL
+    run cleanup_cache "$mixed_cache_dir" 600
+    assert_success
+    
+    # Files older than 10 minutes should be deleted
+    assert [ ! -f "$very_old_file" ]
+    assert [ ! -f "$old_file" ]
+    
+    # Files within TTL should remain
+    assert [ -f "$recent_file" ]
+    assert [ -f "$new_file" ]
+}
+
+@test "cleanup_cache: validates TTL parameter handling" {
+    local test_cache_dir="$TEST_TEMP_DIR/ttl_test_cache"
+    mkdir -p "$test_cache_dir"
+    
+    # Create a test file
+    local test_file="$test_cache_dir/test.cache"
+    echo "test content" > "$test_file"
+    
+    # Make file 2 minutes old
+    touch -t $(date -d '2 minutes ago' '+%Y%m%d%H%M.%S') "$test_file"
+    
+    # Test with 60 second TTL (1 minute) - file should be deleted
+    run cleanup_cache "$test_cache_dir" 60
+    assert_success
+    assert [ ! -f "$test_file" ]
+    
+    # Create another test file
+    echo "test content 2" > "$test_file"
+    touch -t $(date -d '2 minutes ago' '+%Y%m%d%H%M.%S') "$test_file"
+    
+    # Test with 300 second TTL (5 minutes) - file should remain
+    run cleanup_cache "$test_cache_dir" 300
+    assert_success
+    assert [ -f "$test_file" ]
+}
