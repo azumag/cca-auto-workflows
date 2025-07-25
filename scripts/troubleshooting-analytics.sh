@@ -196,109 +196,11 @@ show_analytics_dashboard() {
     local feedback_log="${FEEDBACK_DIR}/feedback.log"
     local detailed_log="${FEEDBACK_DIR}/detailed_feedback.log"
     
-    # Additional analytics beyond basic report
+    # Use helper functions for additional analytics
     echo
-    log_header "🎯 Estimate Accuracy Deep Dive"
-    
-    # Calculate overall accuracy metrics
-    local total_sessions within_estimate significantly_over significantly_under
-    total_sessions=0
-    within_estimate=0
-    significantly_over=0
-    significantly_under=0
-    
-    while IFS=, read -r timestamp session_id step_id outcome duration_min est_range notes; do
-        ((total_sessions++))
-        
-        local min_est_seconds max_est_seconds
-        read min_est_seconds max_est_seconds < <(parse_time_estimate "$est_range")
-        
-        if [[ $min_est_seconds -gt 0 && $max_est_seconds -gt 0 ]]; then
-            local duration_seconds
-            duration_seconds=$(echo "$duration_min * 60" | bc -l | cut -d. -f1)
-            
-            if [[ $duration_seconds -ge $min_est_seconds && $duration_seconds -le $max_est_seconds ]]; then
-                ((within_estimate++))
-            elif [[ $duration_seconds -gt $((max_est_seconds * SIGNIFICANT_MULTIPLIER_OVER)) ]]; then
-                ((significantly_over++))
-            elif [[ $duration_seconds -lt $((min_est_seconds * SIGNIFICANT_MULTIPLIER_UNDER / 1)) ]]; then
-                ((significantly_under++))
-            fi
-        fi
-    done < <(awk -F, -v cutoff="$(date -d "${days_back} days ago" '+%Y-%m-%d')" '
-        BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-        { 
-            ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-            if (ts >= cutoff_ts) print $0
-        }' "$feedback_log" 2>/dev/null || echo "")
-    
-    if [[ $total_sessions -gt 0 ]]; then
-        log_info "📈 Estimate Accuracy Summary:"
-        log_info "  🎯 Within estimate range: $within_estimate/$(( total_sessions )) ($(( within_estimate * 100 / total_sessions ))%)"
-        log_info "  🐌 Significantly over (>2x max): $significantly_over ($(( significantly_over * 100 / total_sessions ))%)"
-        log_info "  🚀 Significantly under (<0.5x min): $significantly_under ($(( significantly_under * 100 / total_sessions ))%)"
-    fi
-    
-    # Difficulty analysis if detailed feedback is available
-    if [[ -f "$detailed_log" ]]; then
-        echo
-        log_header "😓 Difficulty Analysis"
-        
-        local avg_difficulty difficulty_trend
-        avg_difficulty=$(awk -F, -v cutoff="$(date -d "${days_back} days ago" '+%Y-%m-%d')" '
-            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-            { 
-                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-                if (ts >= cutoff_ts && $7 ~ /^[1-5]$/) {
-                    sum += $7; count++
-                }
-            } 
-            END { if (count > 0) printf "%.1f", sum/count; else print "0" }' "$detailed_log" 2>/dev/null || echo "0")
-        
-        if [[ "$avg_difficulty" != "0" ]]; then
-            log_info "🎚️  Average difficulty rating: $avg_difficulty/5"
-            
-            # Show most difficult steps
-            log_info "😰 Most Difficult Steps (avg rating ≥4):"
-            awk -F, -v cutoff="$(date -d "${days_back} days ago" '+%Y-%m-%d')" '
-                BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-                { 
-                    ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-                    if (ts >= cutoff_ts && $7 ~ /^[1-5]$/) {
-                        step_sum[$3] += $7; step_count[$3]++
-                    }
-                } 
-                END { 
-                    for (step in step_sum) {
-                        avg = step_sum[step] / step_count[step]
-                        if (avg >= 4.0) {
-                            printf "    %-20s: %.1f/5 (%d responses)\n", step, avg, step_count[step]
-                        }
-                    }
-                }' "$detailed_log" 2>/dev/null | head -5
-        fi
-    fi
-    
-    # Top blockers analysis
-    if [[ -f "$detailed_log" ]]; then
-        echo
-        log_header "🚧 Common Blockers"
-        
-        local blockers
-        blockers=$(awk -F, -v cutoff="$(date -d "${days_back} days ago" '+%Y-%m-%d')" '
-            BEGIN { cutoff_ts = mktime(gensub(/-/, " ", "g", cutoff) " 00 00 00") }
-            { 
-                ts = mktime(gensub(/[-:T]/, " ", "g", gensub(/\+.*/, "", 1, $1)) " 00")
-                if (ts >= cutoff_ts && length($8) > 3) print $8
-            }' "$detailed_log" 2>/dev/null | grep -v '^""$' | sort | uniq -c | sort -nr | head -5)
-        
-        if [[ -n "$blockers" ]]; then
-            log_info "Top reported blockers:"
-            echo "$blockers" | while read count blocker; do
-                log_info "  [$count×] ${blocker//\"/}"
-            done
-        fi
-    fi
+    calculate_accuracy_metrics "$days_back" "$feedback_log"
+    analyze_difficulty_ratings "$days_back" "$detailed_log"
+    analyze_common_blockers "$days_back" "$detailed_log"
     
     echo
     log_header "📈 Improvement Opportunities"
