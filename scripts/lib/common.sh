@@ -285,12 +285,13 @@ cleanup_cache() {
     fi
     
     # Path traversal protection (consistent with other cache functions)
-    if [[ "$cache_dir" == *".."* ]]; then
+    if [[ "$cache_dir" =~ \.\./|/\.\. ]]; then
         log_error "cleanup_cache: path traversal detected in cache_dir: $cache_dir"
         return 1
     fi
     
     if [[ -d "$cache_dir" ]]; then
+        # Convert TTL to minutes for find command (minimum 1 minute for values < 60s)
         local ttl_minutes=$((cache_ttl / 60))
         if ! find "$cache_dir" -type f -mmin +$ttl_minutes -delete 2>/dev/null; then
             log_warn "cleanup_cache: some files could not be cleaned from $cache_dir"
