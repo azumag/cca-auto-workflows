@@ -1032,6 +1032,810 @@ EOF
 auto_tune_configuration "$1" "$2"
 ```
 
+## Monitoring Integration
+
+Comprehensive monitoring is essential for production deployments of Claude Code Auto Workflows. This section provides practical examples for integrating with popular monitoring and observability tools.
+
+### Prometheus Integration
+
+#### Metrics Collection Setup
+
+**Enable metrics collection in your configuration:**
+
+```bash
+# config/monitoring.conf
+# Production monitoring configuration
+
+# Enable metrics collection
+ENABLE_METRICS=true
+METRICS_PORT=9090
+METRICS_DIR="/var/metrics/cca-workflows"
+METRICS_RETENTION_DAYS=30
+
+# Detailed performance tracking
+ENABLE_PERFORMANCE_METRICS=true
+TRACK_API_LATENCY=true
+TRACK_CACHE_PERFORMANCE=true
+TRACK_WORKFLOW_ANALYSIS_TIME=true
+```
+
+**Prometheus configuration:**
+
+```yaml
+# monitoring/prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'production'
+    environment: 'cca-workflows'
+
+rule_files:
+  - "alert_rules.yml"
+
+scrape_configs:
+  - job_name: 'cca-workflows'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: /metrics
+    params:
+      format: ['prometheus']
+    
+  - job_name: 'cca-workflows-detailed'
+    static_configs:
+      - targets: ['localhost:9091']
+    scrape_interval: 60s
+    metrics_path: /detailed-metrics
+    
+alertmanager:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+```
+
+#### Custom Metrics Implementation
+
+**Expose custom metrics from your scripts:**
+
+```bash
+# scripts/lib/metrics.sh
+# Metrics collection library
+
+METRICS_FILE="${METRICS_DIR}/cca_workflows.prom"
+
+# Initialize metrics file
+init_metrics() {
+    mkdir -p "$METRICS_DIR"
+    cat > "$METRICS_FILE" << 'EOF'
+# HELP cca_workflows_github_api_requests_total Total GitHub API requests
+# TYPE cca_workflows_github_api_requests_total counter
+cca_workflows_github_api_requests_total{endpoint="workflows",status="success"} 0
+cca_workflows_github_api_requests_total{endpoint="workflows",status="error"} 0
+
+# HELP cca_workflows_cache_hits_total Cache hit/miss statistics
+# TYPE cca_workflows_cache_hits_total counter
+cca_workflows_cache_hits_total{type="hit"} 0
+cca_workflows_cache_hits_total{type="miss"} 0
+
+# HELP cca_workflows_analysis_duration_seconds Time spent analyzing workflows
+# TYPE cca_workflows_analysis_duration_seconds histogram
+cca_workflows_analysis_duration_seconds_bucket{le="1"} 0
+cca_workflows_analysis_duration_seconds_bucket{le="5"} 0
+cca_workflows_analysis_duration_seconds_bucket{le="10"} 0
+cca_workflows_analysis_duration_seconds_bucket{le="30"} 0
+cca_workflows_analysis_duration_seconds_bucket{le="+Inf"} 0
+cca_workflows_analysis_duration_seconds_sum 0
+cca_workflows_analysis_duration_seconds_count 0
+
+# HELP cca_workflows_parallel_jobs_active Currently active parallel jobs
+# TYPE cca_workflows_parallel_jobs_active gauge
+cca_workflows_parallel_jobs_active 0
+
+# HELP cca_workflows_memory_usage_bytes Memory usage in bytes
+# TYPE cca_workflows_memory_usage_bytes gauge
+cca_workflows_memory_usage_bytes 0
+EOF
+}
+
+# Increment counter metric
+increment_counter() {
+    local metric_name="$1"
+    local labels="$2"
+    local value="${3:-1}"
+    
+    local current_value=$(grep "${metric_name}{${labels}}" "$METRICS_FILE" | awk '{print $NF}')
+    local new_value=$((current_value + value))
+    
+    sed -i "s/${metric_name}{${labels}} [0-9]*/${metric_name}{${labels}} ${new_value}/" "$METRICS_FILE"
+}
+
+# Set gauge metric
+set_gauge() {
+    local metric_name="$1"
+    local labels="$2"
+    local value="$3"
+    
+    sed -i "s/${metric_name}{${labels}} [0-9]*/${metric_name}{${labels}} ${value}/" "$METRICS_FILE"
+}
+
+# Record histogram observation
+record_histogram() {
+    local metric_name="$1"
+    local value="$2"
+    
+    # Update appropriate bucket
+    for bucket in 1 5 10 30; do
+        if (( $(echo "$value <= $bucket" | bc -l) )); then
+            local current=$(grep "${metric_name}_bucket{le=\"$bucket\"}" "$METRICS_FILE" | awk '{print $NF}')
+            sed -i "s/${metric_name}_bucket{le=\"$bucket\"} [0-9]*/${metric_name}_bucket{le=\"$bucket\"} $((current + 1))/" "$METRICS_FILE"
+        fi
+    done
+    
+    # Update +Inf bucket
+    local inf_current=$(grep "${metric_name}_bucket{le=\"+Inf\"}" "$METRICS_FILE" | awk '{print $NF}')
+    sed -i "s/${metric_name}_bucket{le=\"+Inf\"} [0-9]*/${metric_name}_bucket{le=\"+Inf\"} $((inf_current + 1))/" "$METRICS_FILE"
+    
+    # Update sum and count
+    local sum_current=$(grep "${metric_name}_sum" "$METRICS_FILE" | awk '{print $NF}')
+    local count_current=$(grep "${metric_name}_count" "$METRICS_FILE" | awk '{print $NF}')
+    local new_sum=$(echo "$sum_current + $value" | bc)
+    
+    sed -i "s/${metric_name}_sum [0-9.]*/${metric_name}_sum ${new_sum}/" "$METRICS_FILE"
+    sed -i "s/${metric_name}_count [0-9]*/${metric_name}_count $((count_current + 1))/" "$METRICS_FILE"
+}
+
+# Track API request
+track_api_request() {
+    local endpoint="$1"
+    local status="$2" # success or error
+    
+    increment_counter "cca_workflows_github_api_requests_total" "endpoint=\"$endpoint\",status=\"$status\""
+}
+
+# Track cache performance
+track_cache_performance() {
+    local cache_result="$1" # hit or miss
+    
+    increment_counter "cca_workflows_cache_hits_total" "type=\"$cache_result\""
+}
+
+# Track analysis duration
+track_analysis_duration() {
+    local duration="$1"
+    
+    record_histogram "cca_workflows_analysis_duration_seconds" "$duration"
+}
+
+# Update system metrics
+update_system_metrics() {
+    # Update memory usage
+    local memory_bytes=$(ps -o rss= -p $$ | tr -d ' ')000  # Convert KB to bytes
+    set_gauge "cca_workflows_memory_usage_bytes" "" "$memory_bytes"
+    
+    # Update active parallel jobs
+    local active_jobs=$(pgrep -f "analyze-performance" | wc -l)
+    set_gauge "cca_workflows_parallel_jobs_active" "" "$active_jobs"
+}
+```
+
+**Integration with main scripts:**
+
+```bash
+# In your main analysis script
+source "$script_dir/lib/metrics.sh"
+
+# Initialize metrics on startup
+if [[ "$ENABLE_METRICS" == "true" ]]; then
+    init_metrics
+fi
+
+# Track API requests
+github_api_request() {
+    local endpoint="$1"
+    local start_time=$(date +%s.%3N)
+    
+    if make_api_request "$endpoint"; then
+        track_api_request "$endpoint" "success"
+    else
+        track_api_request "$endpoint" "error"
+    fi
+    
+    local end_time=$(date +%s.%3N)
+    local duration=$(echo "$end_time - $start_time" | bc)
+    track_analysis_duration "$duration"
+}
+
+# Update metrics periodically
+while true; do
+    update_system_metrics
+    sleep 15
+done &
+```
+
+### Grafana Dashboard Configurations
+
+#### Main Overview Dashboard
+
+```json
+{
+  "dashboard": {
+    "id": null,
+    "title": "CCA Workflows - Overview",
+    "description": "Main monitoring dashboard for Claude Code Auto Workflows",
+    "tags": ["cca-workflows", "monitoring"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "GitHub API Requests",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(cca_workflows_github_api_requests_total[5m])",
+            "legendFormat": "{{status}} - {{endpoint}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 50},
+                {"color": "red", "value": 100}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Cache Performance",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "cca_workflows_cache_hits_total",
+            "legendFormat": "{{type}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Analysis Duration",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "rate(cca_workflows_analysis_duration_seconds_bucket[5m])",
+            "legendFormat": "{{le}}"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "cca_workflows_memory_usage_bytes / 1024 / 1024",
+            "legendFormat": "Memory (MB)"
+          }
+        ],
+        "yAxes": [
+          {
+            "unit": "decbytes",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Active Parallel Jobs",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "cca_workflows_parallel_jobs_active",
+            "legendFormat": "Active Jobs"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "max": 32,
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 16},
+                {"color": "red", "value": 24}
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+#### Performance Analysis Dashboard
+
+```json
+{
+  "dashboard": {
+    "id": null,
+    "title": "CCA Workflows - Performance Analysis",
+    "description": "Detailed performance metrics and analysis",
+    "tags": ["cca-workflows", "performance"],
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "API Request Latency Distribution",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(cca_workflows_analysis_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(cca_workflows_analysis_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(cca_workflows_analysis_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Cache Hit Rate Trend",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(cca_workflows_cache_hits_total{type=\"hit\"}[5m]) / (rate(cca_workflows_cache_hits_total[5m]))",
+            "legendFormat": "Cache Hit Rate"
+          }
+        ],
+        "yAxes": [
+          {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Error Rate by Endpoint",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(cca_workflows_github_api_requests_total{status=\"error\"}[5m]) / rate(cca_workflows_github_api_requests_total[5m])",
+            "legendFormat": "{{endpoint}}"
+          }
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "query": {"queryType": "", "refId": "A"},
+              "reducer": {"type": "avg", "params": []},
+              "evaluator": {"params": [0.05], "type": "gt"}
+            }
+          ],
+          "executionErrorState": "alerting",
+          "for": "5m",
+          "frequency": "10s",
+          "handler": 1,
+          "name": "High Error Rate",
+          "noDataState": "no_data"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Alerting Rules and Notifications
+
+#### Prometheus Alert Rules
+
+```yaml
+# monitoring/alert_rules.yml
+groups:
+  - name: cca_workflows_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(cca_workflows_github_api_requests_total{status="error"}[5m]) /
+            rate(cca_workflows_github_api_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: cca-workflows
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+          
+      - alert: CacheHitRateVeryLow
+        expr: |
+          (
+            rate(cca_workflows_cache_hits_total{type="hit"}[10m]) /
+            rate(cca_workflows_cache_hits_total[10m])
+          ) < 0.3
+        for: 10m
+        labels:
+          severity: warning
+          service: cca-workflows
+        annotations:
+          summary: "Cache hit rate very low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}, performance may be degraded"
+          
+      - alert: HighMemoryUsage
+        expr: cca_workflows_memory_usage_bytes > 2147483648  # 2GB
+        for: 5m
+        labels:
+          severity: warning
+          service: cca-workflows
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value | humanizeBytes }}"
+          
+      - alert: TooManyParallelJobs
+        expr: cca_workflows_parallel_jobs_active > 24
+        for: 2m
+        labels:
+          severity: critical
+          service: cca-workflows
+        annotations:
+          summary: "Too many parallel jobs"
+          description: "{{ $value }} parallel jobs are running, system may be overloaded"
+          
+      - alert: LongRunningAnalysis
+        expr: |
+          histogram_quantile(0.95, rate(cca_workflows_analysis_duration_seconds_bucket[5m])) > 30
+        for: 10m
+        labels:
+          severity: warning
+          service: cca-workflows
+        annotations:
+          summary: "Analysis taking too long"
+          description: "95th percentile analysis time is {{ $value }}s"
+          
+      - alert: GitHubAPIDown
+        expr: |
+          increase(cca_workflows_github_api_requests_total{status="success"}[5m]) == 0 and
+          increase(cca_workflows_github_api_requests_total{status="error"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: cca-workflows
+        annotations:
+          summary: "GitHub API appears to be down"
+          description: "No successful API requests in the last 5 minutes"
+```
+
+#### Alertmanager Configuration
+
+```yaml
+# monitoring/alertmanager.yml
+global:
+  smtp_smarthost: 'smtp.company.com:587'
+  smtp_from: 'alerts@company.com'
+  smtp_auth_username: 'alerts@company.com'
+  smtp_auth_password: 'password'
+
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+route:
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default'
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+    - match:
+        service: cca-workflows
+      receiver: 'cca-workflows-team'
+
+receivers:
+  - name: 'default'
+    email_configs:
+      - to: 'devops@company.com'
+        subject: 'CCA Workflows Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          **Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          **Severity:** {{ .Labels.severity }}
+          **Time:** {{ .StartsAt }}
+          {{ end }}
+          
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'devops@company.com,oncall@company.com'
+        subject: 'CRITICAL: CCA Workflows Alert'
+        body: |
+          🚨 **CRITICAL ALERT** 🚨
+          
+          {{ range .Alerts }}
+          **Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          **Time:** {{ .StartsAt }}
+          {{ end }}
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#alerts-critical'
+        title: 'CCA Workflows Critical Alert'
+        text: |
+          {{ range .Alerts }}
+          **{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          {{ end }}
+          
+  - name: 'cca-workflows-team'
+    email_configs:
+      - to: 'cca-workflows-team@company.com'
+        subject: 'CCA Workflows: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          **Service:** {{ .Labels.service }}
+          **Alert:** {{ .Annotations.summary }}
+          **Description:** {{ .Annotations.description }}
+          **Severity:** {{ .Labels.severity }}
+          **Started:** {{ .StartsAt }}
+          {{ if .EndsAt }}**Ended:** {{ .EndsAt }}{{ end }}
+          {{ end }}
+```
+
+### Performance Metrics Collection
+
+#### Advanced Metrics Collection
+
+```bash
+# scripts/lib/advanced-metrics.sh
+# Advanced metrics collection for production monitoring
+
+# System resource monitoring
+collect_system_metrics() {
+    local metrics_file="$1"
+    
+    # CPU usage
+    local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+    echo "cca_workflows_cpu_usage_percent $cpu_usage" >> "$metrics_file"
+    
+    # Memory metrics
+    local memory_info=$(free -b | grep Mem)
+    local total_memory=$(echo "$memory_info" | awk '{print $2}')
+    local used_memory=$(echo "$memory_info" | awk '{print $3}')
+    local available_memory=$(echo "$memory_info" | awk '{print $7}')
+    
+    echo "cca_workflows_memory_total_bytes $total_memory" >> "$metrics_file"
+    echo "cca_workflows_memory_used_bytes $used_memory" >> "$metrics_file"
+    echo "cca_workflows_memory_available_bytes $available_memory" >> "$metrics_file"
+    
+    # Disk I/O metrics
+    if command -v iostat >/dev/null; then
+        local disk_stats=$(iostat -d 1 1 | tail -n +4 | head -1)
+        local read_rate=$(echo "$disk_stats" | awk '{print $3}')
+        local write_rate=$(echo "$disk_stats" | awk '{print $4}')
+        
+        echo "cca_workflows_disk_read_kb_per_sec $read_rate" >> "$metrics_file"
+        echo "cca_workflows_disk_write_kb_per_sec $write_rate" >> "$metrics_file"
+    fi
+    
+    # Load average
+    local load_avg=$(uptime | awk -F'load average:' '{print $2}' | cut -d',' -f1 | xargs)
+    echo "cca_workflows_load_average_1min $load_avg" >> "$metrics_file"
+}
+
+# GitHub API specific metrics
+collect_github_api_metrics() {
+    local metrics_file="$1"
+    
+    # Rate limit information
+    if [[ -n "$GITHUB_TOKEN" ]]; then
+        local rate_limit_info=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/rate_limit)
+        local remaining=$(echo "$rate_limit_info" | jq -r '.rate.remaining')
+        local limit=$(echo "$rate_limit_info" | jq -r '.rate.limit')
+        local reset=$(echo "$rate_limit_info" | jq -r '.rate.reset')
+        
+        echo "cca_workflows_github_rate_limit_remaining $remaining" >> "$metrics_file"
+        echo "cca_workflows_github_rate_limit_total $limit" >> "$metrics_file"
+        echo "cca_workflows_github_rate_limit_reset_timestamp $reset" >> "$metrics_file"
+        
+        # Calculate usage percentage
+        local usage_percent=$(echo "scale=2; (($limit - $remaining) / $limit) * 100" | bc)
+        echo "cca_workflows_github_rate_limit_usage_percent $usage_percent" >> "$metrics_file"
+    fi
+}
+
+# Cache performance metrics
+collect_cache_metrics() {
+    local metrics_file="$1"
+    local cache_dir="${GITHUB_API_CACHE_DIR:-/tmp/github-api-cache}"
+    
+    if [[ -d "$cache_dir" ]]; then
+        # Cache size and file count
+        local cache_size=$(du -sb "$cache_dir" 2>/dev/null | cut -f1)
+        local file_count=$(find "$cache_dir" -type f | wc -l)
+        
+        echo "cca_workflows_cache_size_bytes $cache_size" >> "$metrics_file"
+        echo "cca_workflows_cache_file_count $file_count" >> "$metrics_file"
+        
+        # Age distribution of cache files
+        local files_last_hour=$(find "$cache_dir" -type f -mmin -60 | wc -l)
+        local files_last_day=$(find "$cache_dir" -type f -mtime -1 | wc -l)
+        
+        echo "cca_workflows_cache_files_last_hour $files_last_hour" >> "$metrics_file"
+        echo "cca_workflows_cache_files_last_day $files_last_day" >> "$metrics_file"
+    fi
+}
+
+# Business logic metrics
+collect_business_metrics() {
+    local metrics_file="$1"
+    
+    # Workflow analysis metrics
+    if [[ -f "/tmp/workflow-analysis-stats" ]]; then
+        local total_workflows=$(grep "total_workflows:" /tmp/workflow-analysis-stats | cut -d: -f2 | xargs)
+        local failed_workflows=$(grep "failed_workflows:" /tmp/workflow-analysis-stats | cut -d: -f2 | xargs)
+        local analyzed_workflows=$(grep "analyzed_workflows:" /tmp/workflow-analysis-stats | cut -d: -f2 | xargs)
+        
+        echo "cca_workflows_total_workflows $total_workflows" >> "$metrics_file"
+        echo "cca_workflows_failed_workflows $failed_workflows" >> "$metrics_file"
+        echo "cca_workflows_analyzed_workflows $analyzed_workflows" >> "$metrics_file"
+        
+        # Calculate success rate
+        if [[ $total_workflows -gt 0 ]]; then
+            local success_rate=$(echo "scale=4; ($analyzed_workflows / $total_workflows)" | bc)
+            echo "cca_workflows_analysis_success_rate $success_rate" >> "$metrics_file"
+        fi
+    fi
+}
+
+# Comprehensive metrics collection
+collect_all_metrics() {
+    local metrics_file="${METRICS_DIR}/cca_workflows_detailed.prom"
+    local timestamp=$(date +%s)
+    
+    # Clear metrics file
+    echo "# CCA Workflows Detailed Metrics - $(date)" > "$metrics_file"
+    echo "# Generated at timestamp: $timestamp" >> "$metrics_file"
+    echo "" >> "$metrics_file"
+    
+    collect_system_metrics "$metrics_file"
+    collect_github_api_metrics "$metrics_file"
+    collect_cache_metrics "$metrics_file"
+    collect_business_metrics "$metrics_file"
+    
+    # Add timestamp to all metrics
+    sed -i "s/$/ $timestamp/" "$metrics_file"
+}
+```
+
+#### Metrics Export for External Systems
+
+```bash
+# scripts/export-metrics.sh
+# Export metrics to various external monitoring systems
+
+export_to_datadog() {
+    local metrics_file="$1"
+    local datadog_api_key="$2"
+    
+    echo "Exporting metrics to Datadog..."
+    
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^cca_workflows_ ]]; then
+            local metric_name=$(echo "$line" | awk '{print $1}')
+            local metric_value=$(echo "$line" | awk '{print $2}')
+            local timestamp=$(echo "$line" | awk '{print $3}')
+            
+            # Convert Prometheus format to Datadog format
+            curl -X POST "https://api.datadoghq.com/api/v1/series" \
+                -H "Content-Type: application/json" \
+                -H "DD-API-KEY: $datadog_api_key" \
+                -d "{
+                    \"series\": [{
+                        \"metric\": \"$metric_name\",
+                        \"points\": [[$timestamp, $metric_value]],
+                        \"tags\": [\"service:cca-workflows\", \"environment:production\"]
+                    }]
+                }" \
+                > /dev/null 2>&1
+        fi
+    done < "$metrics_file"
+    
+    echo "Metrics exported to Datadog"
+}
+
+export_to_cloudwatch() {
+    local metrics_file="$1"
+    local aws_region="$2"
+    
+    echo "Exporting metrics to CloudWatch..."
+    
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^cca_workflows_ ]]; then
+            local metric_name=$(echo "$line" | awk '{print $1}')
+            local metric_value=$(echo "$line" | awk '{print $2}')
+            local timestamp=$(echo "$line" | awk '{print $3}')
+            
+            # Convert to CloudWatch format
+            aws cloudwatch put-metric-data \
+                --region "$aws_region" \
+                --namespace "CCAWorkflows" \
+                --metric-data MetricName="$metric_name",Value="$metric_value",Timestamp="$timestamp",Unit=Count \
+                > /dev/null 2>&1
+        fi
+    done < "$metrics_file"
+    
+    echo "Metrics exported to CloudWatch"
+}
+
+export_to_influxdb() {
+    local metrics_file="$1"
+    local influxdb_url="$2"
+    local database="$3"
+    
+    echo "Exporting metrics to InfluxDB..."
+    
+    local line_protocol=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^cca_workflows_ ]]; then
+            local metric_name=$(echo "$line" | awk '{print $1}')
+            local metric_value=$(echo "$line" | awk '{print $2}')
+            local timestamp=$(echo "$line" | awk '{print $3}')
+            
+            # Convert to InfluxDB line protocol
+            line_protocol+="${metric_name},service=cca-workflows value=${metric_value} ${timestamp}000000000\n"
+        fi
+    done < "$metrics_file"
+    
+    # Send to InfluxDB
+    echo -e "$line_protocol" | curl -i -XPOST "${influxdb_url}/write?db=${database}" --data-binary @-
+    
+    echo "Metrics exported to InfluxDB"
+}
+
+# Main export function
+main() {
+    local export_target="$1"
+    local metrics_file="${METRICS_DIR}/cca_workflows_detailed.prom"
+    
+    case "$export_target" in
+        datadog)
+            export_to_datadog "$metrics_file" "$DATADOG_API_KEY"
+            ;;
+        cloudwatch)
+            export_to_cloudwatch "$metrics_file" "$AWS_REGION"
+            ;;
+        influxdb)
+            export_to_influxdb "$metrics_file" "$INFLUXDB_URL" "$INFLUXDB_DATABASE"
+            ;;
+        *)
+            echo "Usage: $0 {datadog|cloudwatch|influxdb}"
+            echo "Set appropriate environment variables for your chosen target"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
+```
+
 ## Advanced Configuration Failure Scenarios
 
 Advanced configuration setups introduce complexity that can lead to sophisticated failure modes. This section covers error handling for complex scenarios:

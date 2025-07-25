@@ -581,6 +581,659 @@ fix_common_permission_issues() {
 }
 ```
 
+## Monitoring Troubleshooting
+
+Monitoring integrations can experience various issues related to metrics collection, alerting, and dashboard functionality. This section provides systematic diagnosis and resolution for monitoring-specific problems.
+
+### Metrics Collection Issues
+
+#### Metrics Not Being Generated
+
+**Problem:** Metrics files are empty or not being created.
+
+**Diagnosis:**
+```bash
+# Check if metrics collection is enabled
+echo "ENABLE_METRICS: ${ENABLE_METRICS:-'not set'}"
+echo "METRICS_DIR: ${METRICS_DIR:-'not set'}"
+
+# Check metrics directory exists and is writable
+ls -la "${METRICS_DIR:-/var/metrics/cca-workflows}"
+
+# Check if metrics library is loaded
+grep -n "source.*metrics.sh" scripts/analyze-performance.sh
+
+# Monitor metrics generation in real-time
+watch "ls -la ${METRICS_DIR:-/var/metrics/cca-workflows}; echo '---'; tail -5 ${METRICS_DIR:-/var/metrics/cca-workflows}/cca_workflows.prom"
+```
+
+**Solutions:**
+```bash
+# Enable metrics collection
+export ENABLE_METRICS=true
+export METRICS_DIR="/var/metrics/cca-workflows"
+
+# Create metrics directory with proper permissions
+mkdir -p "$METRICS_DIR"
+chmod 755 "$METRICS_DIR"
+
+# Verify metrics library is sourced in scripts
+if ! grep -q "source.*metrics.sh" scripts/analyze-performance.sh; then
+    echo "Metrics library not loaded - add to script:"
+    echo "source \"\$script_dir/lib/metrics.sh\""
+fi
+
+# Initialize metrics manually if needed
+if [[ "$ENABLE_METRICS" == "true" ]]; then
+    source scripts/lib/metrics.sh
+    init_metrics
+fi
+```
+
+#### Prometheus Scraping Failures
+
+**Problem:** Prometheus cannot scrape metrics from the application.
+
+**Diagnosis:**
+```bash
+# Check if metrics endpoint is accessible
+curl -s "http://localhost:9090/metrics" | head -10
+
+# Check Prometheus configuration
+grep -A 10 "job_name.*cca-workflows" monitoring/prometheus.yml
+
+# Verify Prometheus is running and can reach targets
+docker logs prometheus-container 2>&1 | grep -i error
+# Or if running directly:
+journalctl -u prometheus | tail -20
+
+# Check Prometheus targets status
+curl -s "http://localhost:9090/api/v1/targets" | jq '.data.activeTargets[] | select(.labels.job=="cca-workflows")'
+```
+
+**Solutions:**
+```bash
+# Fix metrics endpoint accessibility
+# Ensure metrics server is running on correct port
+netstat -tlnp | grep :9090
+
+# Start simple HTTP server for metrics
+if ! pgrep -f "python.*SimpleHTTPServer" > /dev/null; then
+    cd "$METRICS_DIR" && python -m SimpleHTTPServer 9090 &
+fi
+
+# Fix Prometheus configuration
+cat > monitoring/prometheus-fix.yml << 'EOF'
+scrape_configs:
+  - job_name: 'cca-workflows'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: /cca_workflows.prom
+    scrape_timeout: 10s
+EOF
+
+# Restart Prometheus with corrected config
+docker restart prometheus-container
+# Or reload configuration:
+curl -X POST http://localhost:9090/-/reload
+```
+
+#### Incomplete or Corrupted Metrics Data
+
+**Problem:** Metrics data is incomplete, contains errors, or has inconsistent values.
+
+**Diagnosis:**
+```bash
+# Check metrics file format
+head -20 "${METRICS_DIR}/cca_workflows.prom"
+
+# Validate Prometheus format
+promtool check metrics "${METRICS_DIR}/cca_workflows.prom"
+
+# Check for common formatting issues
+grep -n "^[^#]" "${METRICS_DIR}/cca_workflows.prom" | grep -v "^[a-zA-Z_][a-zA-Z0-9_]*{.*} [0-9.-]\+$"
+
+# Monitor metrics updates
+ls -la "${METRICS_DIR}"/*.prom
+stat "${METRICS_DIR}/cca_workflows.prom"
+
+# Check for concurrent write issues
+lsof "${METRICS_DIR}/cca_workflows.prom"
+```
+
+**Solutions:**
+```bash
+# Fix metrics file permissions
+chmod 644 "${METRICS_DIR}"/*.prom
+
+# Implement atomic writes to prevent corruption
+cat > scripts/lib/safe-metrics.sh << 'EOF'
+safe_write_metrics() {
+    local metrics_file="$1"
+    local temp_file="${metrics_file}.tmp.$$"
+    
+    # Write to temporary file first
+    cat > "$temp_file"
+    
+    # Validate format
+    if promtool check metrics "$temp_file" 2>/dev/null; then
+        # Atomic move
+        mv "$temp_file" "$metrics_file"
+    else
+        echo "Invalid metrics format, discarding update"
+        rm -f "$temp_file"
+        return 1
+    fi
+}
+EOF
+
+# Use file locking for concurrent access
+flock -x "${METRICS_DIR}/metrics.lock" -c "update_metrics_function"
+
+# Reset corrupted metrics file
+if [[ -f "${METRICS_DIR}/cca_workflows.prom" ]]; then
+    cp "${METRICS_DIR}/cca_workflows.prom" "${METRICS_DIR}/cca_workflows.prom.backup"
+    source scripts/lib/metrics.sh
+    init_metrics
+fi
+```
+
+### Alerting Issues
+
+#### Alerts Not Firing
+
+**Problem:** Expected alerts are not triggering despite meeting conditions.
+
+**Diagnosis:**
+```bash
+# Check alert rules syntax
+promtool check rules monitoring/alert_rules.yml
+
+# Verify alert rules are loaded in Prometheus
+curl -s "http://localhost:9090/api/v1/rules" | jq '.data.groups[].rules[] | select(.type=="alerting")'
+
+# Check current alert status
+curl -s "http://localhost:9090/api/v1/alerts" | jq '.data.alerts[] | {name: .labels.alertname, state: .state, value: .value}'
+
+# Test alert expressions manually
+curl -s "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=rate(cca_workflows_github_api_requests_total{status="error"}[5m]) / rate(cca_workflows_github_api_requests_total[5m])' | \
+  jq '.data.result[].value[1]'
+
+# Check Alertmanager connectivity
+curl -s "http://localhost:9093/api/v1/status" | jq '.data.configYAML'
+```
+
+**Solutions:**
+```bash
+# Fix alert rule syntax errors
+promtool check rules monitoring/alert_rules.yml
+# Edit and fix any syntax errors identified
+
+# Ensure alert rules are properly loaded
+# Reload Prometheus configuration
+curl -X POST http://localhost:9090/-/reload
+
+# Verify alert evaluation interval
+grep -A 5 "evaluation_interval" monitoring/prometheus.yml
+
+# Check for data availability issues
+# Ensure metrics have data in the time range alert is checking
+curl -s "http://localhost:9090/api/v1/query_range" \
+  --data-urlencode 'query=cca_workflows_github_api_requests_total' \
+  --data-urlencode 'start=2024-01-01T00:00:00Z' \
+  --data-urlencode 'end=2024-12-31T23:59:59Z' \
+  --data-urlencode 'step=3600s'
+
+# Test with simpler alert rule
+cat > monitoring/test-alert.yml << 'EOF'
+groups:
+  - name: test_alerts
+    rules:
+      - alert: TestAlert
+        expr: up{job="cca-workflows"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Test alert for troubleshooting"
+EOF
+```
+
+#### Alert Notifications Not Delivered
+
+**Problem:** Alerts are firing but notifications are not being sent.
+
+**Diagnosis:**
+```bash
+# Check Alertmanager logs
+docker logs alertmanager-container 2>&1 | tail -50
+# Or: journalctl -u alertmanager | tail -20
+
+# Verify Alertmanager configuration
+curl -s "http://localhost:9093/api/v1/status" | jq '.data.configYAML'
+
+# Check alert routing
+curl -s "http://localhost:9093/api/v1/alerts" | jq '.data[] | {fingerprint, status, receiver}'
+
+# Test notification channels
+# For email:
+telnet smtp.company.com 587
+
+# For Slack webhook:
+curl -X POST -H 'Content-type: application/json' \
+  --data '{"text":"Test message"}' \
+  https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+```
+
+**Solutions:**
+```bash
+# Fix SMTP configuration
+cat > monitoring/alertmanager-fix.yml << 'EOF'
+global:
+  smtp_smarthost: 'smtp.company.com:587'
+  smtp_from: 'alerts@company.com'
+  smtp_auth_username: 'alerts@company.com'
+  smtp_auth_password: 'password'
+  smtp_require_tls: true
+
+route:
+  receiver: 'default'
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 12h
+
+receivers:
+  - name: 'default'
+    email_configs:
+      - to: 'devops@company.com'
+        subject: 'Test Alert'
+        body: 'Alert: {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+EOF
+
+# Test email configuration
+echo "Subject: Test Alert" | sendmail -v devops@company.com
+
+# Fix Slack webhook URL
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/CORRECT/WEBHOOK"
+
+# Restart Alertmanager with fixed configuration
+docker restart alertmanager-container
+
+# Check silence status (alerts might be silenced)
+curl -s "http://localhost:9093/api/v1/silences" | jq '.data[] | {comment, matchers, status}'
+```
+
+#### False Positive Alerts
+
+**Problem:** Alerts are firing incorrectly due to noisy data or incorrect thresholds.
+
+**Diagnosis:**
+```bash
+# Analyze alert frequency
+curl -s "http://localhost:9090/api/v1/query_range" \
+  --data-urlencode 'query=ALERTS{alertname="HighErrorRate"}' \
+  --data-urlencode 'start=2024-01-01T00:00:00Z' \
+  --data-urlencode 'end=2024-12-31T23:59:59Z' \
+  --data-urlencode 'step=3600s'
+
+# Check metric values around alert times
+curl -s "http://localhost:9090/api/v1/query_range" \
+  --data-urlencode 'query=rate(cca_workflows_github_api_requests_total{status="error"}[5m])' \
+  --data-urlencode 'start=2024-01-01T00:00:00Z' \
+  --data-urlencode 'end=2024-12-31T23:59:59Z' \
+  --data-urlencode 'step=300s'
+
+# Analyze alert rule sensitivity
+grep -A 10 "HighErrorRate" monitoring/alert_rules.yml
+```
+
+**Solutions:**
+```bash
+# Adjust alert thresholds based on historical data
+# Increase error rate threshold from 5% to 10%
+sed -i 's/> 0.05/> 0.10/' monitoring/alert_rules.yml
+
+# Add longer evaluation period to reduce noise
+sed -i 's/for: 5m/for: 10m/' monitoring/alert_rules.yml
+
+# Use moving averages for smoother alerting
+cat > monitoring/improved-alerts.yml << 'EOF'
+- alert: HighErrorRate
+  expr: |
+    (
+      avg_over_time(
+        rate(cca_workflows_github_api_requests_total{status="error"}[5m])[10m:]
+      ) /
+      avg_over_time(
+        rate(cca_workflows_github_api_requests_total[5m])[10m:]
+      )
+    ) > 0.08
+  for: 15m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Sustained high error rate detected"
+    description: "Error rate has been {{ $value | humanizePercentage }} for 15+ minutes"
+EOF
+
+# Add alert inhibition rules
+cat >> monitoring/alert_rules.yml << 'EOF'
+- alert: GitHubAPIDown
+  expr: up{job="github-api"} == 0
+  for: 5m
+  labels:
+    severity: critical
+    inhibits: "HighErrorRate"
+  annotations:
+    summary: "GitHub API is down"
+    description: "This will cause high error rates in dependent services"
+EOF
+```
+
+### Dashboard Issues
+
+#### Grafana Dashboard Not Loading Data
+
+**Problem:** Grafana dashboard panels show "No data" or fail to load.
+
+**Diagnosis:**
+```bash
+# Check Grafana datasource configuration
+curl -s -u admin:admin "http://localhost:3000/api/datasources" | jq '.[] | {name, url, type}'
+
+# Test Prometheus connectivity from Grafana
+curl -s -u admin:admin "http://localhost:3000/api/datasources/proxy/1/api/v1/query?query=up"
+
+# Check Grafana logs
+docker logs grafana-container 2>&1 | grep -i error
+# Or: journalctl -u grafana-server | tail -20
+
+# Verify panel queries
+curl -s -u admin:admin "http://localhost:3000/api/dashboards/uid/cca-workflows" | jq '.dashboard.panels[].targets'
+
+# Test queries directly against Prometheus
+curl -s "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=rate(cca_workflows_github_api_requests_total[5m])'
+```
+
+**Solutions:**
+```bash
+# Fix Grafana datasource configuration
+curl -X POST -u admin:admin \
+  -H "Content-Type: application/json" \
+  "http://localhost:3000/api/datasources" \
+  -d '{
+    "name": "Prometheus",
+    "type": "prometheus", 
+    "url": "http://localhost:9090",
+    "access": "proxy",
+    "isDefault": true
+  }'
+
+# Fix network connectivity between Grafana and Prometheus
+# Check if both services can communicate
+docker exec grafana-container curl -s http://prometheus:9090/api/v1/targets
+
+# Update dashboard panel queries
+# Fix metric names or adjust query syntax
+cat > dashboard-fix.json << 'EOF'
+{
+  "targets": [
+    {
+      "expr": "rate(cca_workflows_github_api_requests_total[5m])",
+      "legendFormat": "{{status}} - {{endpoint}}",
+      "refId": "A"
+    }
+  ]
+}
+EOF
+
+# Import corrected dashboard
+curl -X POST -u admin:admin \
+  -H "Content-Type: application/json" \
+  "http://localhost:3000/api/dashboards/db" \
+  -d @dashboard-fix.json
+```
+
+#### Dashboard Performance Issues
+
+**Problem:** Dashboard loads slowly or times out.
+
+**Diagnosis:**
+```bash
+# Check query performance
+time curl -s "http://localhost:9090/api/v1/query_range" \
+  --data-urlencode 'query=rate(cca_workflows_github_api_requests_total[5m])' \
+  --data-urlencode 'start=2024-01-01T00:00:00Z' \
+  --data-urlencode 'end=2024-12-31T23:59:59Z' \
+  --data-urlencode 'step=60s'
+
+# Check Prometheus query stats
+curl -s "http://localhost:9090/api/v1/status/runtimeinfo" | jq
+
+# Monitor Grafana query performance
+curl -s -u admin:admin "http://localhost:3000/api/admin/stats" | jq '.dashboards'
+
+# Check system resources during dashboard load
+top -p $(pgrep -f "grafana\|prometheus")
+```
+
+**Solutions:**
+```bash
+# Optimize dashboard queries
+# Use recording rules for expensive queries
+cat > monitoring/recording-rules.yml << 'EOF'
+groups:
+  - name: cca_workflows_recording_rules
+    interval: 30s
+    rules:
+      - record: cca_workflows:api_request_rate
+        expr: rate(cca_workflows_github_api_requests_total[5m])
+        
+      - record: cca_workflows:error_rate
+        expr: |
+          rate(cca_workflows_github_api_requests_total{status="error"}[5m]) /
+          rate(cca_workflows_github_api_requests_total[5m])
+EOF
+
+# Update dashboard to use recording rules
+sed -i 's/rate(cca_workflows_github_api_requests_total\[5m\])/cca_workflows:api_request_rate/g' dashboards/overview.json
+
+# Reduce dashboard refresh rate
+sed -i 's/"refresh": "30s"/"refresh": "1m"/' dashboards/overview.json
+
+# Limit time range for heavy queries
+sed -i 's/"from": "now-24h"/"from": "now-1h"/' dashboards/overview.json
+
+# Increase Prometheus memory if needed
+docker update --memory=2g prometheus-container
+```
+
+### Integration-Specific Issues
+
+#### Datadog Integration Failures
+
+**Problem:** Metrics export to Datadog fails or shows incorrect data.
+
+**Diagnosis:**
+```bash
+# Test Datadog API connectivity
+curl -X POST "https://api.datadoghq.com/api/v1/validate" \
+  -H "DD-API-KEY: $DATADOG_API_KEY" \
+  -H "Content-Type: application/json"
+
+# Check metrics export logs
+grep -A 5 "Exporting metrics to Datadog" /var/log/cca-workflows.log
+
+# Verify metrics format conversion
+head -5 "${METRICS_DIR}/cca_workflows_detailed.prom"
+
+# Test metric submission manually
+curl -X POST "https://api.datadoghq.com/api/v1/series" \
+  -H "Content-Type: application/json" \
+  -H "DD-API-KEY: $DATADOG_API_KEY" \
+  -d '{
+    "series": [{
+      "metric": "cca_workflows.test_metric",
+      "points": [[1640995200, 42]],
+      "tags": ["service:cca-workflows", "environment:test"]
+    }]
+  }'
+```
+
+**Solutions:**
+```bash
+# Fix API key configuration
+export DATADOG_API_KEY="your_actual_api_key_here"
+
+# Fix metric naming for Datadog
+# Convert Prometheus naming to Datadog naming
+sed -i 's/cca_workflows_/cca_workflows./g' scripts/export-metrics.sh
+
+# Add error handling to export script
+cat > scripts/export-metrics-safe.sh << 'EOF'
+export_to_datadog_safe() {
+    local metrics_file="$1"
+    local api_key="$2"
+    local failed_count=0
+    
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^cca_workflows_ ]]; then
+            local response_code=$(curl -w "%{http_code}" -s -o /dev/null \
+                -X POST "https://api.datadoghq.com/api/v1/series" \
+                -H "Content-Type: application/json" \
+                -H "DD-API-KEY: $api_key" \
+                -d "$(format_datadog_payload "$line")")
+            
+            if [[ "$response_code" -ne 202 ]]; then
+                ((failed_count++))
+                echo "Failed to send metric, HTTP code: $response_code"
+            fi
+        fi
+    done < "$metrics_file"
+    
+    echo "Export completed. Failed: $failed_count metrics"
+}
+EOF
+
+# Set up retry mechanism
+export_with_retry() {
+    local max_retries=3
+    local retry_count=0
+    
+    while [[ $retry_count -lt $max_retries ]]; do
+        if export_to_datadog_safe "$@"; then
+            break
+        else
+            ((retry_count++))
+            echo "Retry $retry_count/$max_retries after 30 seconds..."
+            sleep 30
+        fi
+    done
+}
+```
+
+#### AWS CloudWatch Integration Failures
+
+**Problem:** Metrics export to CloudWatch fails with permission or format errors.
+
+**Diagnosis:**
+```bash
+# Test AWS credentials and permissions
+aws sts get-caller-identity
+aws cloudwatch describe-alarms --region us-east-1 --max-records 1
+
+# Check IAM permissions
+aws iam simulate-principal-policy \
+  --policy-source-arn "$(aws sts get-caller-identity --query Arn --output text)" \
+  --action-names cloudwatch:PutMetricData \
+  --resource-arns "*"
+
+# Test CloudWatch API directly
+aws cloudwatch put-metric-data \
+  --region us-east-1 \
+  --namespace "CCAWorkflows/Test" \
+  --metric-data MetricName=TestMetric,Value=1,Unit=Count
+
+# Check export script logs
+grep -A 10 "Exporting metrics to CloudWatch" /var/log/cca-workflows.log
+```
+
+**Solutions:**
+```bash
+# Fix AWS credentials
+aws configure set aws_access_key_id YOUR_ACCESS_KEY
+aws configure set aws_secret_access_key YOUR_SECRET_KEY
+aws configure set region us-east-1
+
+# Add required IAM permissions
+cat > cloudwatch-policy.json << 'EOF'
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:PutMetricData"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+EOF
+
+# Fix metric format for CloudWatch
+# Ensure proper unit types
+sed -i 's/Unit=Count/Unit=None/' scripts/export-metrics.sh
+
+# Add batch processing for better performance
+cat > scripts/export-cloudwatch-batch.sh << 'EOF'
+export_to_cloudwatch_batch() {
+    local metrics_file="$1"
+    local aws_region="$2"
+    local batch_size=20
+    local metric_data="[]"
+    local count=0
+    
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^cca_workflows_ ]]; then
+            local metric_name=$(echo "$line" | awk '{print $1}')
+            local metric_value=$(echo "$line" | awk '{print $2}')
+            local timestamp=$(echo "$line" | awk '{print $3}')
+            
+            metric_data=$(echo "$metric_data" | jq \
+                --arg name "$metric_name" \
+                --arg value "$metric_value" \
+                --arg ts "$timestamp" \
+                '. += [{"MetricName": $name, "Value": ($value | tonumber), "Timestamp": ($ts | tonumber), "Unit": "None"}]')
+            
+            ((count++))
+            
+            if [[ $count -ge $batch_size ]]; then
+                aws cloudwatch put-metric-data \
+                    --region "$aws_region" \
+                    --namespace "CCAWorkflows" \
+                    --metric-data "$metric_data"
+                
+                metric_data="[]"
+                count=0
+            fi
+        fi
+    done < "$metrics_file"
+    
+    # Send remaining metrics
+    if [[ $count -gt 0 ]]; then
+        aws cloudwatch put-metric-data \
+            --region "$aws_region" \
+            --namespace "CCAWorkflows" \
+            --metric-data "$metric_data"
+    fi
+}
+EOF
+```
+
 ## Extended Failure Case Library
 
 ### GitHub API Integration Failures
