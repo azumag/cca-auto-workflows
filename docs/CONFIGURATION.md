@@ -580,14 +580,22 @@ export MAX_PARALLEL_JOBS=50
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: Invalid MAX_PARALLEL_JOBS: 50 (must be 1-32)
-# Configuration validation failed
-# Exit code: 1
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Configuration Validation: Invalid MAX_PARALLEL_JOBS     │
+│ Code: INVALID_PARALLEL_JOBS_RANGE                               │
+│ Detail: Value 50 exceeds maximum allowed (must be 1-32)        │
+│ Cause: System resource limit exceeded                          │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
 
-# Root cause: Exceeds maximum allowed parallel jobs
+# 🕐 Estimated Time: 2-5 minutes
+# 🔴 CRITICAL - Invalid configuration prevents system startup
+
 # Recovery procedure:
-export MAX_PARALLEL_JOBS=8  # Use system-appropriate value
-./scripts/validate-config.sh  # Verify fix
+# Set to system-appropriate value (typically 1x-2x CPU cores)
+export MAX_PARALLEL_JOBS=8
+# Verify configuration is now valid
+./scripts/validate-config.sh
 
 # Prevention strategy:
 # - Use auto-detection: export MAX_PARALLEL_JOBS=$(nproc)
@@ -602,12 +610,21 @@ export CACHE_TTL=30
 CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
 
 # Expected error output:
-# ERROR: Invalid CACHE_TTL: 30 (must be 60-86400 seconds)
-# Configuration validation failed
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Configuration Validation: Invalid CACHE_TTL             │
+│ Code: INVALID_CACHE_TTL_RANGE                                   │
+│ Detail: Value 30 below minimum threshold (must be 60-86400)    │
+│ Cause: Cache TTL too short for effective caching               │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
 
-# Root cause: Cache TTL below minimum threshold
+# 🕐 Estimated Time: 1-3 minutes
+# 🔴 CRITICAL - Invalid configuration prevents system startup
+
 # Recovery procedure:
-export CACHE_TTL=300  # 5 minutes minimum
+# Set to minimum acceptable value (5 minutes)
+export CACHE_TTL=300
+# Verify configuration is now valid
 ./scripts/validate-config.sh
 
 # Prevention strategy:
@@ -626,14 +643,23 @@ export COLORED_OUTPUT=1
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: Invalid ENABLE_CACHE: yes (must be true or false)
-# ERROR: Invalid COLORED_OUTPUT: 1 (must be true or false)
-# Configuration validation failed
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Configuration Validation: Invalid boolean format        │
+│ Code: INVALID_BOOLEAN_FORMAT                                    │
+│ Detail: ENABLE_CACHE='yes' (must be true or false)             │
+│         COLORED_OUTPUT='1' (must be true or false)             │
+│ Cause: Non-standard boolean values used                        │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
 
-# Root cause: Non-standard boolean values
+# 🕐 Estimated Time: 1-2 minutes
+# 🔴 CRITICAL - Invalid configuration prevents system startup
+
 # Recovery procedure:
+# Set boolean values using standard format (true/false)
 export ENABLE_CACHE=true
 export COLORED_OUTPUT=true
+# Verify configuration is now valid
 ./scripts/validate-config.sh
 
 # Prevention strategy:
@@ -651,12 +677,21 @@ export LOG_LEVEL=VERBOSE
 CONFIG_FILE="config/development.conf" ./scripts/validate-config.sh
 
 # Expected error output:
-# ERROR: Invalid LOG_LEVEL: VERBOSE (must be DEBUG, INFO, WARN, or ERROR)
-# Available options: DEBUG (most verbose), INFO (standard), WARN (warnings only), ERROR (errors only)
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Configuration Validation: Invalid LOG_LEVEL             │
+│ Code: INVALID_LOG_LEVEL_ENUM                                    │
+│ Detail: Value 'VERBOSE' not supported                          │
+│ Valid Options: DEBUG, INFO, WARN, ERROR                        │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
 
-# Root cause: Unsupported log level value
+# 🕐 Estimated Time: 1-2 minutes
+# 🔴 CRITICAL - Invalid configuration prevents system startup
+
 # Recovery procedure:
-export LOG_LEVEL=DEBUG  # Use DEBUG for verbose logging
+# Set to valid log level (DEBUG for verbose logging)
+export LOG_LEVEL=DEBUG
+# Verify configuration is now valid
 ./scripts/validate-config.sh
 
 # Prevention strategy:
@@ -672,14 +707,24 @@ export OUTPUT_FORMAT=xml
 ./scripts/analyze-performance.sh --format xml
 
 # Expected error output:
-# ERROR: Invalid OUTPUT_FORMAT: xml (must be console, json, or markdown)
-# Supported formats:
-#   - console: Human-readable output with colors
-#   - json: Structured output for automation
-#   - markdown: Documentation-friendly format
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Configuration Validation: Invalid OUTPUT_FORMAT         │
+│ Code: INVALID_OUTPUT_FORMAT_ENUM                                │
+│ Detail: Format 'xml' not supported                             │
+│ Valid Options: console, json, markdown                         │
+│   • console: Human-readable output with colors                 │
+│   • json: Structured output for automation                     │
+│   • markdown: Documentation-friendly format                    │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 1-2 minutes
+# 🔴 CRITICAL - Invalid configuration prevents system startup
 
 # Recovery procedure:
-export OUTPUT_FORMAT=json  # Use structured format
+# Set to valid output format (json for structured data)
+export OUTPUT_FORMAT=json
+# Verify configuration is now valid
 ./scripts/validate-config.sh
 
 # Prevention strategy:

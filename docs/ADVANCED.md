@@ -110,20 +110,26 @@ Claude Code Auto Workflows is designed to work across different environments and
 #### Linux Distributions
 
 ```bash
-# Ubuntu/Debian
+# Ubuntu/Debian - Install required dependencies
 sudo apt update
 sudo apt install curl jq git bc
+
+# Add GitHub CLI repository
 curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+
+# Install GitHub CLI
 sudo apt update
 sudo apt install gh
 
-# RHEL/CentOS/Fedora
+# RHEL/CentOS/Fedora - Install required dependencies
 sudo dnf install curl jq git bc
+
+# Add GitHub CLI repository and install
 sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
 sudo dnf install gh
 
-# Alpine Linux
+# Alpine Linux - Install all dependencies in one command
 apk add curl jq git bc github-cli
 ```
 
@@ -1041,21 +1047,34 @@ node --version
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: Node.js version 16.20.0 is not supported
-# Required: Node.js 18.0.0 or higher
-# Current version lacks required ES2022 features
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Version Compatibility: Node.js version not supported    │
+│ Code: NODE_VERSION_UNSUPPORTED                                  │
+│ Detail: Version 16.20.0 lacks required ES2022 features         │
+│ Required: Node.js 18.0.0 or higher                             │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 10-15 minutes
+# 🔴 CRITICAL - System will not function without proper Node.js version
 
 # Recovery procedure:
 # 1. Install Node.js 18.x or higher
+# Download and install Node.js 18.x repository
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+# Install Node.js
 sudo apt-get install -y nodejs
 
 # 2. Verify installation
-node --version  # Should show 18.x.x or higher
+# Check Node.js version (should show 18.x.x or higher)
+node --version
 
-# 3. Clear any cached modules
+# 3. Clear any cached modules to prevent conflicts
+# Clean npm cache
 npm cache clean --force
+# Remove existing modules and lock file
 rm -rf node_modules package-lock.json
+# Reinstall dependencies with correct Node.js version
 npm install
 
 # Prevention strategy:
@@ -1074,20 +1093,32 @@ gh --version
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: GitHub CLI version 1.14.0 is not supported
-# Required: gh 2.0.0 or higher for advanced GraphQL features
-# Legacy API endpoints may have rate limiting issues
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Version Compatibility: GitHub CLI version not supported │
+│ Code: GH_CLI_VERSION_UNSUPPORTED                                │
+│ Detail: Legacy API endpoints may have rate limiting issues      │
+│ Required: gh 2.0.0 or higher for advanced GraphQL features     │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 5-10 minutes
+# 🟡 WARNING - API functionality may be limited with legacy version
 
 # Recovery procedure:
 # 1. Remove old version
+# Uninstall legacy GitHub CLI
 sudo apt remove gh
 
 # 2. Install latest version
+# Add GitHub CLI repository key
 curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+# Add repository to sources
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+# Update and install latest GitHub CLI
 sudo apt update && sudo apt install gh
 
 # 3. Re-authenticate
+# Login with new GitHub CLI version
 gh auth login
 
 # Prevention strategy:
@@ -1105,18 +1136,29 @@ export CONFIG_FILE="config/adaptive.conf"
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: Cannot determine system resources for adaptive configuration
-# CPU detection failed: nproc command not available
-# Memory detection failed: free command not available
-# Falling back to conservative defaults
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Resource Detection: Cannot determine system resources   │
+│ Code: SYSTEM_RESOURCE_DETECTION_FAILED                         │
+│ Detail: CPU detection failed - nproc command not available     │
+│         Memory detection failed - free command not available   │
+│ Fallback: Using conservative defaults                          │
+│ Exit Code: 0 (continues with defaults)                        │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 5-8 minutes
+# 🔵 INFO - System continues with safe defaults
 
 # Recovery procedure:
 # 1. Install missing system tools
+# Install process and system utilities
 sudo apt-get install procps util-linux coreutils
 
 # 2. Or provide manual overrides
+# Set parallel jobs based on your system
 export MAX_PARALLEL_JOBS=4
+# Set cache TTL (30 minutes)
 export CACHE_TTL=1800
+# Run with manual configuration
 ./scripts/analyze-performance.sh
 
 # Prevention strategy:
@@ -1132,23 +1174,33 @@ export CONFIG_FILE="config/adaptive.conf"
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# WARNING: Network latency detection failed
-# curl: (6) Could not resolve host: api.github.com
-# Using default rate limiting settings
-# This may result in suboptimal performance
+┌─────────────────────────────────────────────────────────────────┐
+│ [WARNING] Network Detection: Network latency detection failed   │
+│ Code: NETWORK_LATENCY_DETECTION_FAILED                         │
+│ Detail: Could not resolve host api.github.com                  │
+│ Fallback: Using default rate limiting settings                 │
+│ Impact: May result in suboptimal performance                   │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 10-20 minutes  
+# 🟡 WARNING - Network issues may impact performance
 
 # Recovery procedure:
 # 1. Check network connectivity
+# Test basic connectivity to GitHub API
 ping api.github.com
 
 # 2. Check DNS resolution
+# Verify DNS can resolve GitHub domains
 nslookup api.github.com
 
 # 3. Configure proxy if needed
+# Set HTTP proxy for corporate networks
 export HTTP_PROXY="http://proxy.company.com:8080"
 export HTTPS_PROXY="http://proxy.company.com:8080"
 
 # 4. Or override rate limiting manually
+# Use conservative rate limiting
 export RATE_LIMIT_REQUESTS_PER_MINUTE=15
 export RATE_LIMIT_DELAY=4
 

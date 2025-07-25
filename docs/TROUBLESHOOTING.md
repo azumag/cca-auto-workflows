@@ -593,30 +593,45 @@ export GITHUB_TOKEN="ghp_valid_token"
 ./scripts/analyze-performance.sh
 
 # Expected error output:
-# ERROR: Failed to connect to GitHub Enterprise Server
-# curl: (6) Could not resolve host: github.internal.company.com
-# Network unreachable or DNS resolution failure
+┌─────────────────────────────────────────────────────────────────┐
+│ [ERROR] Network Connection: GitHub Enterprise Server unreachable│
+│ Code: GITHUB_ENTERPRISE_CONNECTION_FAILED                      │
+│ Detail: Could not resolve host github.internal.company.com     │
+│ Cause: Network unreachable or DNS resolution failure           │
+│ Exit Code: 1                                                    │
+└─────────────────────────────────────────────────────────────────┘
+
+# 🕐 Estimated Time: 15-30 minutes
+# 🔴 CRITICAL - Cannot access GitHub without network connectivity
 
 # Diagnosis steps:
 # 1. Test DNS resolution
+# Verify DNS can resolve the enterprise server hostname
 nslookup github.internal.company.com
 
 # 2. Test network connectivity
+# Test basic network reachability
 ping github.internal.company.com
+# Test HTTPS port connectivity
 telnet github.internal.company.com 443
 
 # 3. Check enterprise-specific configuration
+# Test HTTPS response (ignoring SSL for diagnosis)
 curl -k -I https://github.internal.company.com
 
 # Recovery procedures:
 # Option 1: Fix DNS/network issues
+# Restart DNS resolution service
 sudo systemctl restart systemd-resolved
+# Add fallback DNS server  
 echo "nameserver 8.8.8.8" | sudo tee -a /etc/resolv.conf
 
 # Option 2: Use IP address temporarily
+# Use direct IP if DNS fails (get IP from network admin)
 export GITHUB_API_URL="https://192.168.1.100/api/v3"
 
 # Option 3: Configure proxy if required
+# Set corporate proxy settings
 export HTTP_PROXY="http://proxy.company.com:8080"
 export HTTPS_PROXY="http://proxy.company.com:8080"
 
