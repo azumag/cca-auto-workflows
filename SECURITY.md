@@ -9,13 +9,12 @@ For immediate security, focus on these critical items first:
 ### 1. Token and Secret Management
 - **Never commit secrets or credentials** to the repository
 - Store all tokens and API keys in GitHub repository secrets
-- Rotate tokens regularly and limit their scopes
-- Use `.gitignore` for sensitive files
+- See **Secret Management** section below for detailed implementation
 
 ### 2. API Security Setup
 - Ensure all API calls use HTTPS
-- Store Claude Code OAuth tokens as repository secrets
-- Verify SSL certificates in production
+- Store Claude Code OAuth tokens as repository secrets  
+- See **API Security** section below for complete setup guide
 
 ### 3. Vulnerability Reporting Process
 - Set up security advisory reporting through GitHub Security tab
@@ -23,6 +22,7 @@ For immediate security, focus on these critical items first:
 - Establish 48-hour acknowledgment timeline
 
 **Implementation Timeline**: Complete within 1-2 days before any production use.
+**Verification**: Run security checklist in Phase 1 implementation section below to confirm completion.
 
 ---
 
@@ -43,7 +43,7 @@ The security of our project is a top priority. If you discover a security vulner
 
 ### How to Report
 
-**Please do NOT report security vulnerabilities through public GitHub issues.**
+⚠️ **Do not report security vulnerabilities through public GitHub issues.**
 
 Instead, please report security vulnerabilities through one of the following methods:
 
@@ -82,7 +82,7 @@ This project uses GitHub Actions workflows which have specific security consider
 
 #### Workflow Permissions 🟠 HIGH
 
-> 🔒 **HIGH PRIORITY**: Important for production security
+> 🔒 **HIGH PRIORITY**: Important for production security - prevents privilege escalation attacks
 
 - All workflows use minimal required permissions
 - `permissions` blocks are explicitly defined
@@ -98,7 +98,7 @@ This project uses GitHub Actions workflows which have specific security consider
 
 #### Third-Party Actions 🟠 HIGH
 
-> 🔒 **HIGH PRIORITY**: Prevents supply chain attacks
+> 🔒 **HIGH PRIORITY**: Prevents supply chain attacks and malicious code injection
 
 - We use pinned versions of third-party actions
 - Actions are regularly reviewed for security updates
@@ -128,7 +128,7 @@ This project uses GitHub Actions workflows which have specific security consider
 
 #### Automated Scanning 🟡 MEDIUM
 
-> 📋 **MEDIUM PRIORITY**: Recommended best practice for ongoing security
+> 📋 **MEDIUM PRIORITY**: Recommended best practice for ongoing security - enables proactive vulnerability detection
 
 - Trivy vulnerability scanner runs on all changes
 - SARIF reports are uploaded to GitHub Security tab
@@ -136,7 +136,7 @@ This project uses GitHub Actions workflows which have specific security consider
 
 #### Monitoring 🟡 MEDIUM
 
-> 📋 **MEDIUM PRIORITY**: Enhances security visibility
+> 📋 **MEDIUM PRIORITY**: Enhances security visibility and incident response capabilities
 
 - Automated security alerts for dependencies
 - Regular security audits of the codebase
@@ -151,22 +151,22 @@ This project uses GitHub Actions workflows which have specific security consider
 1. **Never commit secrets or credentials**
    - Use `.gitignore` for sensitive files
    - Use repository secrets for tokens and keys
-   - Scan commits before pushing
+   - Scan commits before pushing with tools like `git-secrets`
 
 2. **Validate inputs in workflows**
    - Sanitize user inputs in workflow parameters
-   - Use shell escaping for dynamic values
-   - Avoid eval-style operations
+   - Use shell escaping for dynamic values: `${{ github.event.inputs.value }}`
+   - Avoid eval-style operations and direct string interpolation
 
 3. **Follow least privilege principle**
-   - Request minimal required permissions
-   - Limit scope of access tokens
-   - Use specific branch protections
+   - Request minimal required permissions in workflow `permissions:` blocks
+   - Limit scope of access tokens to specific repositories/resources
+   - Use specific branch protections rather than broad access
 
 4. **Review workflow changes carefully**
-   - Check for injection vulnerabilities
-   - Verify third-party action versions
-   - Test changes in forks first
+   - Check for injection vulnerabilities (especially in `run:` blocks)
+   - Verify third-party action versions are pinned to specific commits
+   - Test changes in forks first to avoid production impact
 
 ### For Users
 
@@ -186,6 +186,8 @@ This project uses GitHub Actions workflows which have specific security consider
    - Limit token scopes
 
 ## Known Security Limitations 🔵 LOW
+
+> ℹ️ **LOW PRIORITY**: Important awareness items that don't block implementation but require understanding
 
 > ℹ️ **LOW PRIORITY**: Important awareness, but not blocking
 
@@ -209,9 +211,9 @@ This project uses GitHub Actions workflows which have specific security consider
    - Not a security issue but worth noting
 
 2. **Generated Code Review**
-   - AI-generated code should be reviewed
-   - May introduce unexpected behavior
-   - Human oversight is recommended
+   - All AI-generated code requires human review before merging
+   - May introduce unexpected behavior or security vulnerabilities
+   - Human oversight is mandatory for production deployments
 
 ## Security Updates 🟡 MEDIUM
 
@@ -241,11 +243,26 @@ This project uses GitHub Actions workflows which have specific security consider
 
 ### Phase 2: High Priority Security (Week 1)
 🟠 **HIGH** priority items for production-ready security:
-- Configure minimal workflow permissions
-- Audit and pin third-party action versions
-- Set up dependency security scanning
-- Implement code execution security boundaries
-- Establish security best practices for contributors
+- **Configure minimal workflow permissions**
+  - Review each workflow's `permissions:` block
+  - Remove unnecessary permissions like `write-all`
+  - Document required permissions in workflow comments
+- **Audit and pin third-party action versions**
+  - Pin all actions to specific commit SHAs
+  - Review action source code for security issues
+  - Set up Dependabot for action updates
+- **Set up dependency security scanning**
+  - Enable GitHub security alerts
+  - Configure automated security updates
+  - Implement SARIF reporting for vulnerabilities
+- **Implement code execution security boundaries**
+  - Restrict file system access to repository only
+  - Limit network access to necessary APIs
+  - Use containerized execution where possible
+- **Establish security best practices for contributors**
+  - Create security guidelines document
+  - Set up pre-commit hooks for secret scanning
+  - Require security review for sensitive changes
 
 ### Phase 3: Enhanced Security (Week 2-3)
 🟡 **MEDIUM** priority items for comprehensive security:
@@ -262,6 +279,8 @@ This project uses GitHub Actions workflows which have specific security consider
 - Finalize documentation and contact processes
 
 ## Compliance and Standards 🔵 LOW
+
+> ℹ️ **LOW PRIORITY**: Reference information for security standards and compliance requirements
 
 > ℹ️ **LOW PRIORITY**: Reference information for security standards
 
@@ -313,4 +332,5 @@ We thank the security community for helping keep our project secure:
 
 ---
 
-**Remember**: Security is everyone's responsibility. When in doubt, err on the side of caution and ask questions.
+---
+**🔒 Security Reminder**: Security is everyone's responsibility. When in doubt about any security decision, consult the security team or create a discussion thread for community guidance.
