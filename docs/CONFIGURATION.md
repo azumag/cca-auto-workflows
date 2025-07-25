@@ -126,17 +126,31 @@ load_config() {
 
 This section provides essential configuration setup for common scenarios to help you get started quickly.
 
-### 5-Minute Setup for Development
+### Prerequisites
 
-Get up and running in development with these minimal configuration steps:
+Before getting started, ensure you have the following:
+
+- **Bash shell environment** (Linux, macOS, or WSL on Windows)
+- **Git repository** with GitHub API access
+- **GitHub Personal Access Token** with appropriate permissions
+- **curl or similar HTTP client** (usually pre-installed)
+- **Basic familiarity with environment variables and command-line usage**
+
+### 5-Minute Setup for Development Environment
+
+Get up and running in the development environment with these minimal configuration steps:
 
 ```bash
 # 1. Clone and navigate to your project
 cd your-project-directory
 
-# 2. Copy the development configuration template
-cp config/development.conf.example config/development.conf
-# or create a basic development config:
+# 2. Copy the development configuration template (if available)
+if [ -f "config/development.conf.example" ]; then
+  cp config/development.conf.example config/development.conf
+  echo "✅ Copied development configuration template"
+else
+  # Create a basic development config:
+  echo "📝 Creating basic development configuration..."
 cat > config/development.conf << 'EOF'
 # Development Configuration
 MAX_PARALLEL_JOBS=2
@@ -149,17 +163,29 @@ VALIDATE_SCHEMA=true
 CHECK_SECURITY=true
 EOF
 
-# 3. Set your GitHub token (required for GitHub API access)
-export GITHUB_TOKEN="your-github-token"
+# 3. Set your GitHub Personal Access Token (required for GitHub API access)
+# Generate at: https://github.com/settings/tokens
+# Required scopes: repo (for private repos) or public_repo (for public repos)
+export GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Replace with your actual token
 
-# 4. Test the configuration
-CONFIG_FILE="config/development.conf" ./scripts/validate-config.sh
+# 4. Validate the configuration
+if CONFIG_FILE="config/development.conf" ./scripts/validate-config.sh; then
+  echo "✅ Configuration validation passed"
+else
+  echo "❌ Configuration validation failed - check the error messages above"
+  exit 1
+fi
 
 # 5. Run your first analysis
-CONFIG_FILE="config/development.conf" ./scripts/analyze-performance.sh
+if CONFIG_FILE="config/development.conf" ./scripts/analyze-performance.sh; then
+  echo "✅ Performance analysis completed successfully"
+else
+  echo "❌ Performance analysis failed - check the logs for details"
+  exit 1
+fi
 ```
 
-**Expected output:** Configuration validation should pass, and you should see debug-level logging with colored output.
+**Expected output when validation succeeds:** Configuration validation should pass, and you should see debug-level logging with colored output.
 
 ### Common Production Settings
 
@@ -197,14 +223,25 @@ DEFAULT_MAX_RUNS=500             # More historical data
 # (See Security Checklist below for additional settings)
 ```
 
-**Deployment:**
+**Deployment Verification:**
 ```bash
 # Test production config before deployment
-CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
+if CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh; then
+  echo "✅ Production configuration validated successfully"
+else
+  echo "❌ Production configuration validation failed"
+  exit 1
+fi
 
 # Deploy with production settings
 export CONFIG_FILE="config/production.conf"
-./scripts/analyze-performance.sh --output production-report.json
+if ./scripts/analyze-performance.sh --output production-report.json; then
+  echo "✅ Production analysis completed successfully"
+  echo "📄 Report saved to: production-report.json"
+else
+  echo "❌ Production analysis failed"
+  exit 1
+fi
 ```
 
 ### Essential Security Checklist
@@ -214,16 +251,20 @@ Critical security configurations that must be set up properly:
 #### ✅ **Authentication & Tokens**
 ```bash
 # ✅ DO: Use environment variables for sensitive data
-export GITHUB_TOKEN="your-secure-token"
+# Generate Personal Access Token at: https://github.com/settings/tokens
+# Required scopes: 'repo' for private repositories, 'public_repo' for public repositories
+export GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # ❌ DON'T: Hard-code tokens in configuration files
-# GITHUB_TOKEN="ghp_example123"  # Never do this
+# GITHUB_TOKEN="ghp_example123"  # Never do this - tokens will be exposed in version control
 ```
 
 #### ✅ **File Permissions**
 ```bash
 # Set secure permissions for configuration files
+# Set secure permissions for production config (contains sensitive settings)
 chmod 600 config/production.conf      # Owner read/write only
+# Set standard permissions for development config (typically non-sensitive)
 chmod 644 config/development.conf     # Standard permissions for shared configs
 
 # Verify permissions
@@ -243,7 +284,12 @@ config/
 #### ✅ **Configuration Validation**
 ```bash
 # Always validate before deployment
-CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
+if CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh; then
+  echo "✅ Production configuration validated"
+else
+  echo "❌ Production configuration validation failed"
+  exit 1
+fi
 
 # Enable all security checks
 export CHECK_SECURITY=true
