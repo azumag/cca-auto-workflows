@@ -10,6 +10,7 @@ This guide covers core configuration options, environment variables, and basic s
 ## Table of Contents
 
 - [Configuration Overview](#configuration-overview)
+- [Quick Start](#quick-start)
 - [Configuration Files](#configuration-files)
 - [Environment Variables](#environment-variables)
 - [Configuration Options Reference](#configuration-options-reference)
@@ -119,6 +120,203 @@ load_config() {
     # 4. Validate all configuration
     validate_config
 }
+```
+
+## Quick Start
+
+This section provides essential configuration setup for common scenarios to help you get started quickly.
+
+### 5-Minute Setup for Development
+
+Get up and running in development with these minimal configuration steps:
+
+```bash
+# 1. Clone and navigate to your project
+cd your-project-directory
+
+# 2. Copy the development configuration template
+cp config/development.conf.example config/development.conf
+# or create a basic development config:
+cat > config/development.conf << 'EOF'
+# Development Configuration
+MAX_PARALLEL_JOBS=2
+CACHE_TTL=300
+LOG_LEVEL=DEBUG
+COLORED_OUTPUT=true
+OUTPUT_FORMAT=console
+ENABLE_BENCHMARKS=true
+VALIDATE_SCHEMA=true
+CHECK_SECURITY=true
+EOF
+
+# 3. Set your GitHub token (required for GitHub API access)
+export GITHUB_TOKEN="your-github-token"
+
+# 4. Test the configuration
+CONFIG_FILE="config/development.conf" ./scripts/validate-config.sh
+
+# 5. Run your first analysis
+CONFIG_FILE="config/development.conf" ./scripts/analyze-performance.sh
+```
+
+**Expected output:** Configuration validation should pass, and you should see debug-level logging with colored output.
+
+### Common Production Settings
+
+Essential production configuration template for reliable operation:
+
+```bash
+# config/production.conf
+# Production-ready settings for stable operation
+
+# Core Performance Settings
+MAX_PARALLEL_JOBS=8              # Adjust based on server CPU cores
+CACHE_TTL=3600                   # 1 hour - balance performance vs freshness
+XARGS_PARALLEL_JOBS=8            # Match parallel job count
+
+# Logging and Output
+LOG_LEVEL=WARN                   # Minimal noise, important messages only
+COLORED_OUTPUT=false             # Disable colors for log processing
+OUTPUT_FORMAT=json               # Structured output for automation
+
+# Rate Limiting (Conservative for shared environments)
+RATE_LIMIT_REQUESTS_PER_MINUTE=15
+RATE_LIMIT_DELAY=4
+BURST_SIZE=3
+
+# Reliability Settings
+ENABLE_BENCHMARKS=false          # Skip benchmarks in production
+ENABLE_CACHE=true                # Essential for performance
+VALIDATE_SCHEMA=true             # Prevent configuration errors
+
+# Retention Settings
+DEFAULT_KEEP_DAYS=90             # Extended retention for production
+DEFAULT_MAX_RUNS=500             # More historical data
+
+# Security Settings
+# (See Security Checklist below for additional settings)
+```
+
+**Deployment:**
+```bash
+# Test production config before deployment
+CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
+
+# Deploy with production settings
+export CONFIG_FILE="config/production.conf"
+./scripts/analyze-performance.sh --output production-report.json
+```
+
+### Essential Security Checklist
+
+Critical security configurations that must be set up properly:
+
+#### ✅ **Authentication & Tokens**
+```bash
+# ✅ DO: Use environment variables for sensitive data
+export GITHUB_TOKEN="your-secure-token"
+
+# ❌ DON'T: Hard-code tokens in configuration files
+# GITHUB_TOKEN="ghp_example123"  # Never do this
+```
+
+#### ✅ **File Permissions**
+```bash
+# Set secure permissions for configuration files
+chmod 600 config/production.conf      # Owner read/write only
+chmod 644 config/development.conf     # Standard permissions for shared configs
+
+# Verify permissions
+ls -la config/
+```
+
+#### ✅ **Environment Separation**
+```bash
+# Use different configurations for each environment
+config/
+├── development.conf     # Development settings
+├── staging.conf        # Staging environment  
+├── production.conf     # Production settings (secure)
+└── ci.conf            # CI/CD pipeline settings
+```
+
+#### ✅ **Configuration Validation**
+```bash
+# Always validate before deployment
+CONFIG_FILE="config/production.conf" ./scripts/validate-config.sh
+
+# Enable all security checks
+export CHECK_SECURITY=true
+export VALIDATE_SCHEMA=true
+```
+
+#### ✅ **Log Security**
+```bash
+# Production: Avoid debug logs that might expose sensitive data
+export LOG_LEVEL=WARN
+
+# Development: Use debug logs safely in isolated environments
+export LOG_LEVEL=DEBUG
+```
+
+#### ⚠️ **Security Warnings**
+- Never commit `GITHUB_TOKEN` or other secrets to version control
+- Use secure secret management systems in production (e.g., GitHub Secrets, HashiCorp Vault)
+- Regularly rotate access tokens and API keys
+- Review configuration files for accidentally committed secrets
+
+### Quick Reference Table
+
+Most commonly used configuration options for quick setup:
+
+| Setting | Development | Production | CI/CD | Description |
+|---------|-------------|------------|-------|-------------|
+| **Core Settings** |
+| `MAX_PARALLEL_JOBS` | `2` | `8` | `4` | Parallel processing limit |
+| `CACHE_TTL` | `300` (5min) | `3600` (1hr) | `1800` (30min) | Cache duration in seconds |
+| `LOG_LEVEL` | `DEBUG` | `WARN` | `INFO` | Logging verbosity level |
+| **Output & Format** |
+| `OUTPUT_FORMAT` | `console` | `json` | `json` | Output format type |
+| `COLORED_OUTPUT` | `true` | `false` | `false` | Enable colored console output |
+| **Performance** |
+| `ENABLE_BENCHMARKS` | `true` | `false` | `false` | Run performance benchmarks |
+| `ENABLE_CACHE` | `true` | `true` | `true` | Enable caching system |
+| **Rate Limiting** |
+| `RATE_LIMIT_REQUESTS_PER_MINUTE` | `30` | `15` | `30` | GitHub API rate limit |
+| `RATE_LIMIT_DELAY` | `2` | `4` | `2` | Delay between requests (seconds) |
+| **Validation** |
+| `VALIDATE_SCHEMA` | `true` | `true` | `true` | Enable configuration validation |
+| `CHECK_SECURITY` | `true` | `true` | `true` | Enable security checks |
+| `CHECK_PERFORMANCE` | `true` | `false` | `false` | Enable performance validation |
+
+#### **Quick Environment Setup**
+```bash
+# Development
+export CONFIG_FILE="config/development.conf"
+export MAX_PARALLEL_JOBS=2 LOG_LEVEL=DEBUG COLORED_OUTPUT=true
+
+# Production  
+export CONFIG_FILE="config/production.conf"
+export MAX_PARALLEL_JOBS=8 LOG_LEVEL=WARN OUTPUT_FORMAT=json
+
+# CI/CD
+export CONFIG_FILE="config/ci.conf"  
+export MAX_PARALLEL_JOBS=4 LOG_LEVEL=INFO OUTPUT_FORMAT=json
+```
+
+#### **Common Command Patterns**
+```bash
+# Validate configuration
+CONFIG_FILE="config/your-env.conf" ./scripts/validate-config.sh
+
+# Run with custom config
+CONFIG_FILE="config/your-env.conf" ./scripts/analyze-performance.sh
+
+# Override specific settings
+MAX_PARALLEL_JOBS=4 CACHE_TTL=600 ./scripts/analyze-performance.sh
+
+# Run with benchmarks
+ENABLE_BENCHMARKS=true ./scripts/analyze-performance.sh --benchmarks
 ```
 
 ## Configuration Files
